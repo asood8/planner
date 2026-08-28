@@ -13,6 +13,9 @@ token.json
 config.json
 output/planner_dashboard.html
 
+# Info
+info.md
+
 # Editor/OS files
 .vscode/
 .idea/
