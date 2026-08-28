@@ -1,0 +1,23 @@
+{
+  "model": "phi4-mini:3.8b",
+  "timezone": "America/New_York",
+  "calendar_days_ahead": 14,
+  "max_emails": 20,
+  "include_gmail": true,
+  "output_mode": "browser",
+  "user_context": "",
+  "user_profile": {
+    "sleep_time": "11:00 PM",
+    "wake_time": "7:00 AM",
+    "workday_start": 8,
+    "workday_end": 22,
+    "priority_style": "Focus on the most urgent and important items first, then protect time for rest and recovery.",
+    "recurring_commitments": [
+      "Keep a buffer for meals, breaks, and commute time."
+    ],
+    "email_preferences": {
+      "flag_for_reply": true,
+      "ignore_newsletters": true
+    }
+  }
+}

@@ -1,0 +1,19 @@
+﻿# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
+env/
+
+# Secrets - never commit these
+credentials.json
+token.json
+
+# Personal config and generated output
+config.json
+output/planner_dashboard.html
+
+# Editor/OS files
+.vscode/
+.idea/
+.DS_Store

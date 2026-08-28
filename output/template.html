@@ -1,0 +1,381 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Planner Dashboard</title>
+  
+  <!-- Fonts and Calendar CSS -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/main.min.css" rel="stylesheet">
+  
+  <style>
+    :root {
+      --bg-color: #f3f4f6;
+      --sidebar-bg: #ffffff;
+      --text-main: #1f2937;
+      --text-muted: #4b5563;
+      --border-color: #e5e7eb;
+    }
+    
+    body { 
+      font-family: 'Inter', system-ui, -apple-system, sans-serif; 
+      margin: 0; 
+      background: var(--bg-color); 
+      color: var(--text-main); 
+    }
+    
+    .layout { 
+      display: grid; 
+      grid-template-columns: 340px 1fr; 
+      min-height: 100vh; 
+    }
+    
+    .sidebar { 
+      background: var(--sidebar-bg); 
+      padding: 24px; 
+      border-right: 1px solid var(--border-color); 
+      overflow-y: auto; 
+      box-shadow: 2px 0 10px rgba(0,0,0,0.03);
+      z-index: 10;
+    }
+    
+    .sidebar h2 { 
+      margin-top: 0; 
+      font-size: 1.5rem;
+      font-weight: 600;
+      color: #111827;
+      border-bottom: 2px solid var(--bg-color);
+      padding-bottom: 16px;
+      margin-bottom: 20px;
+    }
+    
+    .plan-html p { 
+      margin: 0 0 12px; 
+      line-height: 1.6; 
+      font-size: 0.95rem;
+      color: var(--text-muted);
+    }
+    
+    .plan-html ul { 
+      padding-left: 20px; 
+      margin: 0 0 12px;
+      font-size: 0.95rem;
+      color: var(--text-muted);
+    }
+    
+    .main { 
+      padding: 24px; 
+      height: 100vh;
+      box-sizing: border-box;
+    }
+    
+    .calendar-container {
+      background: #ffffff;
+      padding: 24px;
+      border-radius: 12px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.04);
+      height: calc(100vh - 48px);
+      box-sizing: border-box;
+      border: 1px solid var(--border-color);
+    }
+
+    #calendar { 
+      height: 100%; 
+    }
+
+    /* Allow event titles to wrap and avoid clipping in timeGrid events */
+    .fc .fc-event, .fc-event {
+      white-space: normal !important;
+      overflow: visible !important;
+    }
+    .fc .fc-timegrid-event .fc-event-title,
+    .fc .fc-timegrid-event .fc-event-main .fc-event-title {
+      white-space: normal !important;
+      display: block !important;
+      overflow: visible !important;
+    }
+    .fc .fc-timegrid-event {
+      max-height: none !important;
+      height: auto !important;
+    }    /* Loading spinner animation */
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .loader-spinner {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 3px solid #ddd;
+      border-top: 3px solid #7C4DFF;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-right: 8px;
+      vertical-align: middle;
+    }
+
+    .loader-text {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 500;
+    }
+    /* Responsive Layout for Mobile/Tablets */
+    @media (max-width: 900px) {
+      .layout { 
+        grid-template-columns: 1fr; 
+        grid-template-rows: auto 1fr;
+      }
+      .sidebar {
+        border-right: none;
+        border-bottom: 1px solid var(--border-color);
+        max-height: 40vh;
+      }
+      .main {
+        height: auto;
+      }
+      .calendar-container {
+        height: 800px; /* Fallback height for scrolling on mobile */
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <h2>AI Plan</h2>
+      <div style="margin-bottom:12px;">
+        <label style="font-weight:600; display:block; margin-bottom:6px;">Temporary note (one-time)</label>
+        <textarea id="temp-note" rows="3" style="width:100%; padding:8px; border:1px solid var(--border-color); border-radius:6px; resize:vertical; font-family:inherit;"></textarea>
+      </div>
+      <div style="margin-bottom:12px;">
+        <label style="font-weight:600; display:block; margin-bottom:6px;">Permanent note (saved)</label>
+        <textarea id="perm-note" rows="3" style="width:100%; padding:8px; border:1px solid var(--border-color); border-radius:6px; resize:vertical; font-family:inherit;"></textarea>
+        <div style="display:flex; gap:8px; margin-top:8px;">
+          <button id="save-perm" style="padding:6px 10px; border-radius:6px; border:1px solid var(--border-color); background:#fff; cursor:pointer">Save</button>
+          <button id="clear-perm" style="padding:6px 10px; border-radius:6px; border:1px solid var(--border-color); background:#fff; cursor:pointer">Delete</button>
+        </div>
+      </div>
+      <div style="margin-bottom:18px; display:flex; gap:8px; align-items:center;">
+        <button id="ask-ai-btn" style="padding:8px 12px; border-radius:8px; background:#7C4DFF; color:#fff; border:none; cursor:pointer; font-weight:500;">Ask AI</button>
+        <div id="ai-loading" style="display:none; font-size:0.9rem; color:#7C4DFF; font-weight:500;">
+          <span class="loader-spinner"></span>
+          <span>Generating…</span>
+        </div>
+      </div>
+      <div class="plan-html" id="ai-plan-container">{{ ai_plan_html | safe }}</div>
+    </aside>
+    <main class="main">
+      <div class="calendar-container">
+        <div id="calendar"></div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Connection status widget -->
+  <div id="connection-status" style="position:fixed; top:12px; right:12px; z-index:99999; font-family: Inter, system-ui, -apple-system, sans-serif;">
+    <div style="background: rgba(255,255,255,0.9); border:1px solid #e5e7eb; padding:8px 12px; border-radius:8px; box-shadow:0 6px 18px rgba(0,0,0,0.06);">
+      <div style="font-size:12px; font-weight:600; color:#111827; margin-bottom:6px">Connections</div>
+      <div style="display:flex; gap:10px; align-items:center; font-size:12px; color:#374151;">
+        <div style="display:flex; gap:6px; align-items:center;">
+          <span style="width:10px; height:10px; border-radius:50%; background: {{ 'green' if calendar_ok else '#ef4444' }};"></span>
+          <span>Calendar</span>
+        </div>
+        <div style="display:flex; gap:6px; align-items:center;">
+          <span style="width:10px; height:10px; border-radius:50%; background: {{ 'green' if tasks_ok else '#ef4444' }};"></span>
+          <span>Tasks</span>
+        </div>
+        <div style="display:flex; gap:6px; align-items:center;">
+          <span style="width:10px; height:10px; border-radius:50%; background: {{ 'green' if gmail_ok else '#ef4444' }};"></span>
+          <span>Gmail</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
+  <script>
+    const rawEvents = {{ events_json | safe }};
+    const events = Array.isArray(rawEvents) ? rawEvents : [];
+
+    document.addEventListener('DOMContentLoaded', function () {
+      const calendarEl = document.getElementById('calendar');
+      // create a simple tooltip element for event hover
+      let fcTooltip = document.getElementById('fc-tooltip');
+      if (!fcTooltip) {
+        fcTooltip = document.createElement('div');
+        fcTooltip.id = 'fc-tooltip';
+        Object.assign(fcTooltip.style, {
+          position: 'absolute',
+          display: 'none',
+          padding: '8px 10px',
+          background: 'rgba(17,24,39,0.95)',
+          color: '#fff',
+          borderRadius: '6px',
+          fontSize: '0.9rem',
+          maxWidth: '420px',
+          zIndex: 99999,
+          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+          pointerEvents: 'none',
+          whiteSpace: 'normal',
+        });
+        document.body.appendChild(fcTooltip);
+      }
+
+      const calendar = new FullCalendar.Calendar(calendarEl, {
+        initialView: 'timeGridWeek',
+        initialDate: new Date(),
+        timeZone: 'local',
+        headerToolbar: {
+          left: 'prev,next today',
+          center: 'title',
+          right: 'timeGridWeek,dayGridMonth'
+        },
+        events: events,
+        eventDisplay: 'block',
+        editable: false,
+        dayMaxEvents: false,
+        allDaySlot: false,
+        slotMinTime: '06:00:00',
+        slotMaxTime: '23:00:00',
+        scrollTime: '08:00:00',
+        expandRows: true,
+        height: '100%',
+        eventDidMount: function(info) {
+          const el = info.el;
+          const event = info.event;
+          const details = (event.extendedProps && event.extendedProps.details) ? ("\n" + event.extendedProps.details) : '';
+          const tooltipText = event.title + details;
+
+          function onMouseMove(ev) {
+            fcTooltip.style.left = (ev.pageX + 12) + 'px';
+            fcTooltip.style.top = (ev.pageY + 12) + 'px';
+          }
+
+          function onEnter(ev) {
+            fcTooltip.textContent = tooltipText;
+            fcTooltip.style.display = 'block';
+            onMouseMove(ev);
+            document.addEventListener('mousemove', onMouseMove);
+          }
+
+          function onLeave() {
+            fcTooltip.style.display = 'none';
+            document.removeEventListener('mousemove', onMouseMove);
+          }
+
+          el.addEventListener('mouseenter', onEnter);
+          el.addEventListener('mouseleave', onLeave);
+          el.__fcTooltipHandlers = { onEnter, onLeave, onMouseMove };
+        },
+        eventWillUnmount: function(info) {
+          const el = info.el;
+          const h = el.__fcTooltipHandlers;
+          if (h) {
+            el.removeEventListener('mouseenter', h.onEnter);
+            el.removeEventListener('mouseleave', h.onLeave);
+            document.removeEventListener('mousemove', h.onMouseMove);
+            delete el.__fcTooltipHandlers;
+          }
+        }
+      });
+      calendar.render();
+      
+      // --- Planner UI: permanent/temp notes and client-side AI request ---
+      const OLLAMA_MODEL = "{{ ollama_model }}";
+
+      function loadPermanentNote() {
+        try {
+          const v = localStorage.getItem('planner_perm_note') || '';
+          document.getElementById('perm-note').value = v;
+        } catch (e) { }
+      }
+
+      function savePermanentNote() {
+        try {
+          const v = document.getElementById('perm-note').value || '';
+          localStorage.setItem('planner_perm_note', v);
+        } catch (e) { }
+      }
+
+      function clearPermanentNote() {
+        try {
+          localStorage.removeItem('planner_perm_note');
+          document.getElementById('perm-note').value = '';
+        } catch (e) { }
+      }
+
+      loadPermanentNote();
+
+      document.getElementById('save-perm').addEventListener('click', function () {
+        savePermanentNote();
+        const el = document.getElementById('ai-loading');
+        el.style.display = 'inline-block';
+        el.textContent = 'Saved';
+        setTimeout(() => el.style.display = 'none', 800);
+      });
+
+      document.getElementById('clear-perm').addEventListener('click', function () {
+        if (!confirm('Delete the permanent note?')) return;
+        clearPermanentNote();
+      });
+
+      document.getElementById('ask-ai-btn').addEventListener('click', async function () {
+        const btn = document.getElementById('ask-ai-btn');
+        const loading = document.getElementById('ai-loading');
+        const temp = document.getElementById('temp-note').value || '';
+        const perm = document.getElementById('perm-note').value || '';
+
+        const prompt = `Permanent note:\n${perm}\n\nTemporary note:\n${temp}`;
+
+        btn.disabled = true;
+        loading.style.display = 'inline-flex';
+
+        try {
+          const res = await fetch('/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model: OLLAMA_MODEL, prompt }),
+          });
+          const data = await res.json();
+          if (data.error) throw new Error(data.error);
+
+          const events = Array.isArray(data.events) ? data.events : [];
+          let addedCount = 0;
+          events.forEach(function (ev) {
+            if (!ev.date || !ev.start || !ev.end || !ev.title) return;
+            calendar.addEvent({
+              title: ev.title,
+              start: `${ev.date}T${ev.start}:00`,
+              end: `${ev.date}T${ev.end}:00`,
+              color: '#7C4DFF',
+              extendedProps: { source: 'ai_plan' }
+            });
+            addedCount++;
+          });
+
+          if (addedCount > 0) {
+            loading.innerHTML = `<span style="color:#10b981;">Added ${addedCount} event${addedCount !== 1 ? 's' : ''}</span>`;
+            setTimeout(() => loading.style.display = 'none', 1500);
+          } else {
+            loading.innerHTML = '<span style="color:#f59e0b;">No events scheduled — try being more specific</span>';
+            setTimeout(() => loading.style.display = 'none', 2200);
+          }
+
+          document.getElementById('temp-note').value = '';
+        } catch (err) {
+          loading.innerHTML = '<span style="color:#ef4444;">Error</span>';
+          setTimeout(() => loading.style.display = 'none', 1500);
+          console.error('AI request error:', err);
+        } finally {
+          btn.disabled = false;
+        }
+      });
+    });
+  </script>
+</body>
+</html>
