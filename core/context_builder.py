@@ -8,7 +8,8 @@ def _format_time(value: datetime | None) -> str:
     if value is None:
         return ""
     if isinstance(value, datetime):
-        return value.strftime("%H:%M")
+        # Show local wall-clock time; astimezone() treats naive values as already local.
+        return value.astimezone().strftime("%H:%M")
     return str(value)
 
 
@@ -27,7 +28,7 @@ def _format_free_blocks(free_blocks: list[tuple[datetime, datetime]]) -> str:
         return "Free blocks: none"
     formatted = []
     for start, end in free_blocks:
-        formatted.append(f"{start.strftime('%H:%M')}–{end.strftime('%H:%M')}")
+        formatted.append(f"{_format_time(start)}–{_format_time(end)}")
     return "Free blocks: " + ", ".join(formatted)
 
 
@@ -49,9 +50,20 @@ def _format_email(email: dict[str, Any]) -> str:
     return f'- From: {sender} | "{subject}"'
 
 
+def _append_task_section(lines: list[str], heading: str, tasks: list[dict[str, Any]]) -> None:
+    lines.append("")
+    lines.append(heading)
+    if tasks:
+        for task in tasks:
+            lines.append(f"  {_format_task(task)}")
+    else:
+        lines.append("  - None")
+
+
 def build_context(day_context: dict[str, Any], week_context: dict[str, Any], max_emails: int = 20) -> str:
     """Convert normalized day/week context into a readable text block for the model."""
-    today_label = day_context["date"].strftime("%A, %B %d")
+    today = day_context["date"]
+    today_label = today.strftime("%A, %B %d")
     lines = [f"TODAY — {today_label}"]
 
     for event in day_context.get("events", []):
@@ -68,36 +80,28 @@ def build_context(day_context: dict[str, Any], week_context: dict[str, Any], max
             lines.append(f"    - {event_a.get('title', 'Untitled')} overlaps {event_b.get('title', 'Untitled')}")
 
     lines.append("")
-    lines.append("TASKS DUE TODAY")
-    today_tasks = day_context.get("tasks_due_today", [])
-    if today_tasks:
-        for task in today_tasks:
-            lines.append(f"  {_format_task(task)}")
+    lines.append("REST OF THE WEEK")
+    upcoming_days = sorted(day for day in week_context.get("events_by_day", {}) if day > today)
+    if upcoming_days:
+        for day in upcoming_days:
+            lines.append(f"  {day.strftime('%a %b %d')}")
+            for event in week_context["events_by_day"][day]:
+                lines.append(f"    {_format_event(event)}")
     else:
-        lines.append("  - None")
+        lines.append("  - No events")
 
-    lines.append("")
-    lines.append("TASKS DUE THIS WEEK")
-    week_tasks = week_context.get("tasks_this_week", [])
-    if week_tasks:
-        for task in week_tasks:
-            lines.append(f"  {_format_task(task)}")
-    else:
-        lines.append("  - None")
+    _append_task_section(lines, "OVERDUE TASKS", day_context.get("tasks_overdue", []))
+    _append_task_section(lines, "TASKS DUE TODAY", day_context.get("tasks_due_today", []))
+    _append_task_section(lines, "TASKS DUE LATER THIS WEEK", week_context.get("tasks_this_week", []))
+    _append_task_section(lines, "TASKS DUE AFTER THIS WEEK", week_context.get("tasks_later", []))
+    _append_task_section(lines, "NO DUE DATE", week_context.get("tasks_no_due", []))
 
-    lines.append("")
-    lines.append("NO DUE DATE")
-    no_due_tasks = week_context.get("tasks_no_due", [])
-    if no_due_tasks:
-        for task in no_due_tasks:
-            lines.append(f"  {_format_task(task)}")
-    else:
-        lines.append("  - None")
-
-    lines.append("")
-    lines.append(f"UNREAD EMAILS ({max_emails})")
-    lines.append("  TODAY")
     emails_today = day_context.get("emails_today", [])[:max_emails]
+    emails_week = week_context.get("emails_this_week", [])[:max_emails]
+
+    lines.append("")
+    lines.append(f"UNREAD EMAILS ({len(emails_today) + len(emails_week)})")
+    lines.append("  TODAY")
     if emails_today:
         for email in emails_today:
             lines.append(f"    {_format_email(email)}")
@@ -105,7 +109,6 @@ def build_context(day_context: dict[str, Any], week_context: dict[str, Any], max
         lines.append("    - None")
 
     lines.append("  THIS WEEK")
-    emails_week = week_context.get("emails_this_week", [])[:max_emails]
     if emails_week:
         for email in emails_week:
             lines.append(f"    {_format_email(email)}")

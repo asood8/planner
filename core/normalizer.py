@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from email.utils import parsedate_to_datetime
-from difflib import SequenceMatcher
 from typing import Any
 
 
@@ -11,30 +10,33 @@ DEFAULT_WORKDAY_START = 8
 DEFAULT_WORKDAY_END = 22
 
 
+def _parse_iso(value: str) -> datetime | None:
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
 def _coerce_event_day(value: Any) -> date | None:
+    """Local calendar day of an event time. Naive datetimes are local wall-clock time."""
+    if isinstance(value, str):
+        value = _parse_iso(value)
     if isinstance(value, datetime):
-        return value.date()
+        return value.astimezone().date() if value.tzinfo else value.date()
     if isinstance(value, date):
         return value
-    if isinstance(value, str):
-        try:
-            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-            return parsed.date()
-        except ValueError:
-            return None
     return None
 
 
 def _coerce_event_datetime(value: Any) -> datetime | None:
-    if isinstance(value, datetime):
-        return value.astimezone(timezone.utc) if value.tzinfo else value.replace(tzinfo=timezone.utc)
-    if isinstance(value, date) and not isinstance(value, datetime):
-        return datetime.combine(value, datetime.min.time(), tzinfo=timezone.utc)
+    """Aware UTC datetime for ordering/overlap checks. Naive datetimes and dates are local time."""
     if isinstance(value, str):
-        try:
-            return datetime.fromisoformat(value.replace("Z", "+00:00"))
-        except ValueError:
-            return None
+        value = _parse_iso(value)
+    if isinstance(value, datetime):
+        # astimezone() on a naive datetime interprets it as local time.
+        return value.astimezone(timezone.utc)
+    if isinstance(value, date):
+        return datetime.combine(value, time.min).astimezone(timezone.utc)
     return None
 
 
@@ -82,7 +84,7 @@ def _filter_week(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
     filtered = []
     for event in events:
         event_day = _coerce_event_day(event.get("start"))
-        if week_start <= event_day <= week_end:
+        if event_day is not None and week_start <= event_day <= week_end:
             filtered.append(event)
     return sorted(filtered, key=lambda item: _coerce_event_datetime(item.get("start")) or datetime.max.replace(tzinfo=timezone.utc))
 
@@ -101,19 +103,22 @@ def _find_free_blocks(today_events: list[dict[str, Any]], workday_start: int = D
 
     timed_events.sort(key=lambda item: item[0])
 
-    today_local = date.today()
-    workday_start_dt = datetime.combine(today_local, datetime.min.time().replace(hour=workday_start), tzinfo=local_tz)
-    workday_end_dt = datetime.combine(today_local, datetime.min.time().replace(hour=workday_end), tzinfo=local_tz)
+    # timedelta (not time(hour=...)) so a workday_end of 24 means midnight.
+    day_start = datetime.combine(date.today(), time.min, tzinfo=local_tz)
+    workday_start_dt = day_start + timedelta(hours=workday_start)
+    workday_end_dt = day_start + timedelta(hours=workday_end)
+    min_block = timedelta(minutes=MIN_FREE_BLOCK_MINUTES)
     cursor = workday_start_dt
     free_blocks = []
 
     for start, end in timed_events:
-        if cursor < start and (start - cursor).total_seconds() >= MIN_FREE_BLOCK_MINUTES * 60:
-            free_blocks.append((cursor, start))
+        block_end = min(start, workday_end_dt)
+        if cursor < block_end and block_end - cursor >= min_block:
+            free_blocks.append((cursor, block_end))
         if end > cursor:
             cursor = end
 
-    if cursor < workday_end_dt:
+    if cursor < workday_end_dt and workday_end_dt - cursor >= min_block:
         free_blocks.append((cursor, workday_end_dt))
 
     return free_blocks
@@ -175,9 +180,10 @@ def _bucket_emails(emails: list[dict[str, Any]]) -> dict[str, list[dict[str, Any
         if not isinstance(received, datetime):
             continue
 
-        if received.date() == today:
+        received_day = received.astimezone().date()
+        if received_day == today:
             buckets["today"].append(email)
-        elif week_start <= received.date() <= today:
+        elif week_start <= received_day <= today:
             buckets["this_week"].append(email)
         else:
             buckets["older"].append(email)
@@ -187,7 +193,19 @@ def _bucket_emails(emails: list[dict[str, Any]]) -> dict[str, list[dict[str, Any
     return buckets
 
 
-def normalize(events: list[dict[str, Any]], tasks: list[dict[str, Any]], emails: list[dict[str, Any]]) -> tuple[dict[str, Any], dict[str, Any]]:
+def _task_due_day(task: dict[str, Any]) -> date | None:
+    # Google Tasks due values are date-only (midnight UTC), so take the UTC date as-is.
+    due = _coerce_task_due(task.get("due"))
+    return due.date() if due else None
+
+
+def normalize(
+    events: list[dict[str, Any]],
+    tasks: list[dict[str, Any]],
+    emails: list[dict[str, Any]],
+    workday_start: int = DEFAULT_WORKDAY_START,
+    workday_end: int = DEFAULT_WORKDAY_END,
+) -> tuple[dict[str, Any], dict[str, Any]]:
     today = date.today()
     week_start = today - timedelta(days=today.weekday())
     week_end = week_start + timedelta(days=6)
@@ -196,23 +214,33 @@ def normalize(events: list[dict[str, Any]], tasks: list[dict[str, Any]], emails:
 
     today_events = _filter_today(events)
     week_events = _filter_week(events)
-    free_blocks = _find_free_blocks(today_events)
+    free_blocks = _find_free_blocks(today_events, workday_start, workday_end)
     conflicts = _find_conflicts(today_events)
     tagged_today_events = _tag_events_with_tasks(today_events, normalized_tasks)
 
     email_buckets = _bucket_emails(emails)
 
-    today_tasks = [task for task in normalized_tasks if _coerce_task_due(task.get("due")) and _coerce_task_due(task.get("due")).date() < today]
-    due_today_tasks = [task for task in normalized_tasks if _coerce_task_due(task.get("due")) and _coerce_task_due(task.get("due")).date() == today]
-    week_tasks = [task for task in normalized_tasks if _coerce_task_due(task.get("due")) and week_start <= _coerce_task_due(task.get("due")).date() <= week_end]
-    no_due_tasks = [task for task in normalized_tasks if not _coerce_task_due(task.get("due"))]
+    # Task buckets are disjoint so no task is listed (or drawn on the calendar) twice.
+    overdue_tasks, due_today_tasks, week_tasks, later_tasks, no_due_tasks = [], [], [], [], []
+    for task in normalized_tasks:
+        due_day = _task_due_day(task)
+        if due_day is None:
+            no_due_tasks.append(task)
+        elif due_day < today:
+            overdue_tasks.append(task)
+        elif due_day == today:
+            due_today_tasks.append(task)
+        elif due_day <= week_end:
+            week_tasks.append(task)
+        else:
+            later_tasks.append(task)
 
     day_context = {
         "date": today,
         "events": tagged_today_events,
         "free_blocks": free_blocks,
         "conflicts": conflicts,
-        "tasks_overdue": today_tasks,
+        "tasks_overdue": overdue_tasks,
         "tasks_due_today": due_today_tasks,
         "emails_today": email_buckets["today"],
     }
@@ -221,6 +249,7 @@ def normalize(events: list[dict[str, Any]], tasks: list[dict[str, Any]], emails:
         "date_range": (week_start, week_end),
         "events_by_day": {},
         "tasks_this_week": week_tasks,
+        "tasks_later": later_tasks,
         "tasks_no_due": no_due_tasks,
         "emails_this_week": email_buckets["this_week"],
         "emails_older": email_buckets["older"],

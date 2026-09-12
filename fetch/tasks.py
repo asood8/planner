@@ -5,6 +5,18 @@ from googleapiclient.discovery import build
 from auth.google_auth import get_credentials
 
 
+def _list_all(request_fn, **kwargs):
+    """Collect every item from a paginated Google Tasks list call."""
+    items = []
+    page_token = None
+    while True:
+        result = request_fn(maxResults=100, pageToken=page_token, **kwargs).execute()
+        items.extend(result.get("items", []))
+        page_token = result.get("nextPageToken")
+        if not page_token:
+            return items
+
+
 def get_tasks(creds=None, include_completed=False):
     """Return incomplete Google Tasks grouped by overdue, due, and no-due-date buckets."""
     if creds is None:
@@ -12,14 +24,14 @@ def get_tasks(creds=None, include_completed=False):
 
     service = build("tasks", "v1", credentials=creds)
 
-    task_lists = service.tasklists().list().execute().get("items", [])
+    task_lists = _list_all(service.tasklists().list)
     grouped_tasks = {"overdue": [], "has_due_date": [], "no_due_date": []}
 
     for task_list in task_lists:
         list_id = task_list.get("id")
         list_title = task_list.get("title", "Untitled list")
 
-        tasks_result = service.tasks().list(tasklist=list_id).execute().get("items", [])
+        tasks_result = _list_all(service.tasks().list, tasklist=list_id)
         for item in tasks_result:
             if item.get("status") == "completed" and not include_completed:
                 continue

@@ -6,19 +6,26 @@ from typing import Any
 
 
 def _coerce_datetime(value: Any) -> datetime | None:
-    if isinstance(value, datetime):
-        if value.tzinfo is None:
-            return value.replace(tzinfo=timezone.utc)
-        return value.astimezone(timezone.utc)
-    if isinstance(value, date) and not isinstance(value, datetime):
-        return datetime.combine(value, datetime.min.time(), tzinfo=timezone.utc)
+    """Aware UTC datetime. Naive datetimes and plain dates are treated as local time."""
     if isinstance(value, str):
         try:
-            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-            return parsed.astimezone(timezone.utc) if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+            value = datetime.fromisoformat(value.replace("Z", "+00:00"))
         except ValueError:
             return None
+    if isinstance(value, datetime):
+        # astimezone() on a naive datetime interprets it as local time.
+        return value.astimezone(timezone.utc)
+    if isinstance(value, date):
+        return datetime.combine(value, time.min).astimezone(timezone.utc)
     return None
+
+
+def _event_day(value: Any) -> date | None:
+    """Local calendar day an event starts on (unlike _coerce_date, which keeps a task's UTC date)."""
+    if isinstance(value, date) and not isinstance(value, datetime):
+        return value
+    parsed = _coerce_datetime(value)
+    return parsed.astimezone().date() if parsed else None
 
 
 def _coerce_date(value: Any) -> date | None:
@@ -68,7 +75,8 @@ def _parse_ai_plan_events(ai_text: str | None, day_date: date) -> list[dict[str,
     )
 
     for raw_line in ai_text.splitlines():
-        line = raw_line.strip()
+        # Drop a markdown bullet and bold markers so "- **9:00 AM - 10:00 AM** Study" still parses.
+        line = re.sub(r"^\s*[-*+•]\s+", "", raw_line).replace("**", "").replace("__", "").strip()
         if not line:
             continue
 
@@ -148,70 +156,69 @@ def _categorize_event(event: dict[str, Any]) -> tuple[str, str]:
     return "event", "#2E8B57"
 
 
-def to_fullcalendar_events(day_context: dict[str, Any], week_context: dict[str, Any], ai_text: str | None = None) -> list[dict[str, Any]]:
+def _calendar_event_entry(event: dict[str, Any]) -> dict[str, Any] | None:
+    start = event.get("start")
+    end = event.get("end")
+    if event.get("all_day"):
+        start_value = _format_date(start)
+        if start_value is None:
+            return None
+        # All-day end dates are exclusive; default a missing one to the next day.
+        end_value = _format_date(end) or (date.fromisoformat(start_value) + timedelta(days=1)).strftime("%Y-%m-%d")
+    else:
+        start_value = _format_datetime(start)
+        end_value = _format_datetime(end)
+        if start_value is None or end_value is None:
+            return None
+
+    category, color = _categorize_event(event)
+    entry = {
+        "title": str(event.get("title", "Untitled event")),
+        "start": start_value,
+        "end": end_value,
+        "color": color,
+        "category": category,
+        "extendedProps": {
+            "details": event.get("description") or event.get("location") or "",
+        },
+    }
+    if event.get("all_day"):
+        entry["allDay"] = True
+    return entry
+
+
+def to_fullcalendar_events(
+    day_context: dict[str, Any],
+    week_context: dict[str, Any],
+    ai_text: str | None = None,
+    calendar_events: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    """Build FullCalendar events. `calendar_events` is every fetched event; defaults to this week's."""
     events: list[dict[str, Any]] = []
 
     day_date = day_context.get("date") or date.today()
-    events.extend(_parse_ai_plan_events(ai_text, day_date))
+    plan_events = _parse_ai_plan_events(ai_text, day_date)
 
-    for event in day_context.get("events", []):
-        start = event.get("start")
-        end = event.get("end")
-        all_day = bool(event.get("all_day"))
-        category, color = _categorize_event(event)
-        if all_day:
-            start_date = _format_date(start)
-            end_date = _format_date(end) or (date.fromisoformat(start_date) + timedelta(days=1)).strftime("%Y-%m-%d") if start_date else None
-            if start_date and end_date:
-                events.append(
-                    {
-                        "title": str(event.get("title", "Untitled event")),
-                        "start": start_date,
-                        "end": end_date,
-                        "allDay": True,
-                        "color": color,
-                        "category": category,
-                        "extendedProps": {
-                            "details": event.get("description") or event.get("location") or "",
-                        },
-                    }
-                )
-        else:
-            start_value = _format_datetime(start)
-            end_value = _format_datetime(end)
-            if start_value and end_value:
-                events.append(
-                    {
-                        "title": str(event.get("title", "Untitled event")),
-                        "start": start_value,
-                        "end": end_value,
-                        "color": color,
-                        "category": category,
-                        "extendedProps": {
-                            "details": event.get("description") or event.get("location") or "",
-                        },
-                    }
-                )
+    if calendar_events is None:
+        calendar_events = [event for day_events in week_context.get("events_by_day", {}).values() for event in day_events]
+    # Today's events come from day_context because they carry matched_task tags.
+    other_day_events = [event for event in calendar_events if _event_day(event.get("start")) != day_date]
 
-    for task in day_context.get("tasks_overdue", []) + day_context.get("tasks_due_today", []):
-        due_date = _coerce_date(task.get("due"))
-        if due_date is None:
-            continue
-        events.append(
-            {
-                "title": f"Task: {task.get('title', 'Untitled task')}",
-                "start": due_date.strftime("%Y-%m-%d"),
-                "end": (due_date + timedelta(days=1)).strftime("%Y-%m-%d"),
-                "allDay": True,
-                "color": "#E67E22",
-                "category": "task",
-                "extendedProps": {
-                    "details": task.get("notes") or "",
-                },
-            }
-        )
+    calendar_entries = [
+        entry
+        for entry in map(_calendar_event_entry, day_context.get("events", []) + other_day_events)
+        if entry is not None
+    ]
+    # The daily plan restates existing events so the sidebar reads as a full schedule; draw each once.
+    calendar_starts = {entry["start"] for entry in calendar_entries if not entry.get("allDay")}
+    events.extend(event for event in plan_events if event["start"] not in calendar_starts)
+    events.extend(calendar_entries)
 
-    for task in week_context.get("tasks_this_week", []):
+    for task in (
+        day_context.get("tasks_overdue", [])
+        + day_context.get("tasks_due_today", [])
+        + week_context.get("tasks_this_week", [])
+    ):
         due_date = _coerce_date(task.get("due"))
         if due_date is None:
             continue

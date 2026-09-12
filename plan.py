@@ -1,25 +1,17 @@
 import argparse
-import json
 import sys
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from ai.ollama_client import OllamaClient
 from auth.google_auth import get_credentials
 from core.context_builder import build_context
-from core.normalizer import normalize
+from core.pipeline import fetch_sources, load_config, normalize_sources, script_safe_json
 from core.prompt_builder import build_prompt
-from fetch.calendar import get_events
-from fetch.gmail import get_unread_emails
-from fetch.tasks import get_tasks
 from output.calendar_formatter import to_fullcalendar_events
 from output.formatter import format_ai_output
 from jinja2 import Environment, FileSystemLoader
 
-
-def load_config() -> dict:
-    with Path("config.json").open("r", encoding="utf-8") as handle:
-        return json.load(handle)
+BASE_DIR = Path(__file__).resolve().parent
 
 
 def format_output(result: str, mode: str) -> str:
@@ -31,29 +23,22 @@ def format_output(result: str, mode: str) -> str:
     return f"{heading}\n{'=' * len(heading)}\n\n{result.strip()}"
 
 
-def _safe_fetch(future, label: str, default):
-    """Resolve a future; on failure, warn and fall back instead of crashing the whole run."""
-    try:
-        return future.result(), True
-    except Exception as exc:
-        print(f"Warning: {label} fetch failed: {exc}")
-        return default, False
-
-
 def render_dashboard(
     result: str,
     day_context: dict,
     week_context: dict,
     calendar_ok: bool,
     tasks_ok: bool,
-    gmail_ok: bool,
+    gmail_ok: bool | None,
     config: dict,
     output_path: str | None = None,
+    calendar_events: list[dict] | None = None,
 ) -> str:
-    template_dir = Path(__file__).resolve().parent / "output"
+    """Render the dashboard. A status of None means the source was not fetched (shown grey)."""
+    template_dir = BASE_DIR / "output"
     environment = Environment(loader=FileSystemLoader(template_dir))
     template = environment.get_template("template.html")
-    events_json = json.dumps(to_fullcalendar_events(day_context, week_context, result))
+    events_json = script_safe_json(to_fullcalendar_events(day_context, week_context, result, calendar_events))
     ai_plan_html = format_ai_output(result)
     ollama_model = config.get("model", "phi4-mini:3.8b")
     html = template.render(
@@ -90,22 +75,8 @@ def main(argv: list[str] | None = None) -> None:
     config = load_config()
     creds = get_credentials()
 
-    with ThreadPoolExecutor(max_workers=3) as executor:
-        events_future = executor.submit(get_events, creds, config.get("calendar_days_ahead", 14))
-        tasks_future = executor.submit(get_tasks, creds)
-        emails_future = (
-            executor.submit(get_unread_emails, creds, config.get("max_emails", 20))
-            if config.get("include_gmail", True) else None
-        )
-
-        events, calendar_ok = _safe_fetch(events_future, "calendar", [])
-        tasks, tasks_ok = _safe_fetch(tasks_future, "tasks", [])
-        if emails_future is not None:
-            emails, gmail_ok = _safe_fetch(emails_future, "gmail", [])
-        else:
-            emails, gmail_ok = [], False
-
-    day_context, week_context = normalize(events, tasks, emails)
+    events, tasks, emails, status = fetch_sources(creds, config)
+    day_context, week_context = normalize_sources(events, tasks, emails, config)
     context_text = build_context(day_context, week_context, max_emails=config.get("max_emails", 20))
 
     if mode == "daily":
@@ -133,7 +104,16 @@ def main(argv: list[str] | None = None) -> None:
         print("\nCONTEXT:\n")
         print(context_text)
 
-    dashboard_path = render_dashboard(result, day_context, week_context, calendar_ok, tasks_ok, gmail_ok, config)
+    dashboard_path = render_dashboard(
+        result,
+        day_context,
+        week_context,
+        status["calendar_ok"],
+        status["tasks_ok"],
+        status["gmail_ok"],
+        config,
+        calendar_events=events,
+    )
     print(f"\nDashboard written to: {dashboard_path}")
 
 

@@ -7,10 +7,10 @@
   
   <!-- Fonts and Calendar CSS -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorin>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-  <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/main.min.css" rel="stylesheet">
-  
+  <!-- FullCalendar v6 injects its own CSS from the JS bundle; there is no separate stylesheet. -->
+
   <style>
     :root {
       --bg-color: #f3f4f6;
@@ -176,23 +176,20 @@
     </main>
   </div>
 
-  <!-- Connection status widget -->
+  <!-- Connection status widget: True = fetched (green), False = fetch failed (red), None = not fetched (grey) -->
+  {% macro status_dot(ok, label) %}
+        <div style="display:flex; gap:6px; align-items:center;" title="{{ label }}: {{ 'connected' if ok else ('not loaded' if ok is none else 'fetch failed') }}">
+          <span style="width:10px; height:10px; border-radius:50%; background: {{ 'green' if ok else ('#9ca3af' if ok is none else '#ef4444') }};"></span>
+          <span>{{ label }}</span>
+        </div>
+  {% endmacro %}
   <div id="connection-status" style="position:fixed; top:12px; right:12px; z-index:99999; font-family: Inter, system-ui, -apple-system, sans-serif;">
     <div style="background: rgba(255,255,255,0.9); border:1px solid #e5e7eb; padding:8px 12px; border-radius:8px; box-shadow:0 6px 18px rgba(0,0,0,0.06);">
       <div style="font-size:12px; font-weight:600; color:#111827; margin-bottom:6px">Connections</div>
       <div style="display:flex; gap:10px; align-items:center; font-size:12px; color:#374151;">
-        <div style="display:flex; gap:6px; align-items:center;">
-          <span style="width:10px; height:10px; border-radius:50%; background: {{ 'green' if calendar_ok else '#ef4444' }};"></span>
-          <span>Calendar</span>
-        </div>
-        <div style="display:flex; gap:6px; align-items:center;">
-          <span style="width:10px; height:10px; border-radius:50%; background: {{ 'green' if tasks_ok else '#ef4444' }};"></span>
-          <span>Tasks</span>
-        </div>
-        <div style="display:flex; gap:6px; align-items:center;">
-          <span style="width:10px; height:10px; border-radius:50%; background: {{ 'green' if gmail_ok else '#ef4444' }};"></span>
-          <span>Gmail</span>
-        </div>
+        {{ status_dot(calendar_ok, 'Calendar') }}
+        {{ status_dot(tasks_ok, 'Tasks') }}
+        {{ status_dot(gmail_ok, 'Gmail') }}
       </div>
     </div>
   </div>
@@ -239,7 +236,7 @@
         eventDisplay: 'block',
         editable: false,
         dayMaxEvents: false,
-        allDaySlot: false,
+        allDaySlot: true,
         slotMinTime: '06:00:00',
         slotMaxTime: '23:00:00',
         scrollTime: '08:00:00',
@@ -333,6 +330,8 @@
         const prompt = `Permanent note:\n${perm}\n\nTemporary note:\n${temp}`;
 
         btn.disabled = true;
+        // Reset the indicator; earlier "Saved"/"Added N events" messages replace its contents.
+        loading.innerHTML = '<span class="loader-spinner"></span><span>Generating…</span>';
         loading.style.display = 'inline-flex';
 
         try {
@@ -368,8 +367,10 @@
 
           document.getElementById('temp-note').value = '';
         } catch (err) {
-          loading.innerHTML = '<span style="color:#ef4444;">Error</span>';
-          setTimeout(() => loading.style.display = 'none', 1500);
+          // /generate only exists when the page is served by server.py, not opened as a file.
+          const message = location.protocol === 'file:' ? 'Ask AI needs server.py running' : 'Error';
+          loading.innerHTML = `<span style="color:#ef4444;">${message}</span>`;
+          setTimeout(() => loading.style.display = 'none', 2500);
           console.error('AI request error:', err);
         } finally {
           btn.disabled = false;
