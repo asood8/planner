@@ -3,6 +3,10 @@
 Reads Google Calendar, Google Tasks, and unread Gmail, and generates a daily/weekly
 plan using a locally-run Ollama model. No cloud AI calls, no data leaves your machine.
 
+![The week view: classes, events, and tasks marked in highlighter colors, dashed suggested study and exam-review sessions, a red outline where two events overlap, and a sidebar with this week's warnings, sessions to check in, and the day's plan](docs/screenshots/week.png)
+
+<sub>Screenshots use made-up sample data. To regenerate them after changing the page, run `.venv\Scripts\python.exe docs\make_screenshots.py`.</sub>
+
 ## Requirements
 - Python 3.11+
 - [Ollama](https://ollama.com) installed and running, with a model pulled (e.g. `ollama pull phi4-mini`)
@@ -45,6 +49,8 @@ On Windows, `run_planner.bat` / `run_planner.ps1` do the same using `.venv`.
 - Suggestions have a dashed border. Click one to add it to the planner's calendar or dismiss it, or drag a work session to a better time to add it there.
 - **Mark tasks done.** Click a task on the calendar to mark it done. This only hides it in the planner (Google Tasks isn't changed), and removes any of its study sessions that haven't started yet. **Marked done** in the sidebar lets you undo it.
 - Overlapping events get a red outline, and a line marks the current time. The **Connections** box shows whether Ollama is running and lets you pick which installed model to use. Google data is cached for 5 minutes; **↻ Refresh** fetches it again.
+
+<p align="center"><img src="docs/screenshots/phone.png" width="320" alt="The sidebar on a phone-sized screen in the evening: this week's warnings, sessions to check in, the end-of-day review with a task still open, and the day's plan"></p>
 
 Everything the web app saves (added events, dismissed suggestions, plan history, email scan results, tasks marked done with how long they took, and session check-ins) is stored in `data/` on your machine. None of it is sent to Google.
 
