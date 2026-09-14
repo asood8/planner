@@ -13,6 +13,7 @@ from time import monotonic
 from ai.ollama_client import OllamaClient
 from auth.google_auth import get_credentials
 from core import timeutil
+from core.checkins import pending_checkins
 from core.context_builder import build_busy_times
 from core.done_tasks import load_done, mark_done, record_actual, undo_done
 from core.email_deadlines import scan_emails
@@ -23,11 +24,13 @@ from core.pipeline import build_plan_prompt, fetch_sources, prepare_contexts, sc
 from core.plan_history import get_plan, latest_plan_for, list_plans, save_plan
 from core.prompt_builder import PLAN_REQUESTS
 from core.quick_add import parse_quick_add
+from core.review import day_review
 from core.saved_events import (
     add_saved_events,
     delete_saved_event,
     delete_upcoming,
     load_saved_events,
+    set_session_status,
     to_calendar_events,
     update_saved_event,
 )
@@ -136,9 +139,15 @@ def _google_data(settings, refresh=False):
 
 
 def _dashboard(settings):
-    """Google data plus saved events, normalized, with suggestions."""
+    """Google data plus saved events, normalized, with suggestions, check-ins, and (in the evening) the day's review."""
     events, tasks, emails, status, error = _google_data(settings)
     events, day_context, week_context, suggestions = prepare_contexts(events, tasks, emails, settings)
+    now = timeutil.now()
+    saved, done = load_saved_events(), load_done()
+    review = None
+    if now.hour >= settings.user_profile.review_hour:
+        open_tasks = day_context['tasks_overdue'] + day_context['tasks_due_today']
+        review = day_review(now, saved, done, open_tasks, events, suggestions['items'])
     return {
         'events': events,
         'day': day_context,
@@ -147,7 +156,15 @@ def _dashboard(settings):
         'emails': emails,
         'status': status,
         'error': error,
+        'done': done,
+        'checkins': pending_checkins(saved, {entry['key'] for entry in done}, now),
+        'review': review,
     }
+
+
+def _live_state(state):
+    """What the page's check-in, review, and week-ahead boxes show."""
+    return {'checkins': state['checkins'], 'review': state['review'], 'week': state['suggestions'].get('week', [])}
 
 
 def _notices(state):
@@ -233,7 +250,9 @@ def index():
         ai_plan_html=sidebar_html,
         events_json=script_safe_json(_calendar_events(state, plan_text)),
         notices=_notices(state),
-        done_tasks=load_done(),
+        week_notes=state['suggestions'].get('week', []),
+        state_json=script_safe_json(_live_state(state)),
+        done_tasks=state['done'],
         estimate_notes=state['suggestions'].get('estimates', []),
         ollama_model=_configured_model(settings),
         live=True,
@@ -243,13 +262,14 @@ def index():
 
 @app.route('/api/events')
 def calendar_events():
-    """The calendar's events, notices, and done list, so the page can refresh without reloading."""
+    """Everything the page redraws after a change (events, notices, done list, check-ins, review, week ahead)."""
     state = _dashboard(_load_settings())
     return jsonify({
         'events': _calendar_events(state, _todays_plan_text()),
         'notices': _notices(state),
-        'done': load_done(),
+        'done': state['done'],
         'estimates': state['suggestions'].get('estimates', []),
+        **_live_state(state),
     })
 
 
@@ -412,6 +432,21 @@ def task_time():
     if not record_actual(key, int(minutes)):
         return jsonify({'error': 'task not found in the done list'}), 404
     return jsonify({'key': key, 'actual': int(minutes)})
+
+
+@app.route('/sessions/<event_id>/status', methods=['POST'])
+def session_status(event_id):
+    """Check in on a work session: {"status": "done" | "skipped" | null}. Skipped time is suggested again."""
+    payload = request.get_json(silent=True) or {}
+    if 'status' not in payload:
+        return jsonify({'error': 'missing status'}), 400
+    try:
+        event = set_session_status(event_id, payload['status'])
+    except KeyError:
+        return jsonify({'error': 'event not found'}), 404
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+    return jsonify({'event': event})
 
 
 @app.route('/tasks/undo', methods=['POST'])

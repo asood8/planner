@@ -33,6 +33,7 @@ class UserProfile:
     recurring_commitments: tuple[str, ...] = ()
     workday_start: int = 8
     workday_end: int = 22
+    review_hour: int = 18  # when the "Wrapping up today" review appears; 24 turns it off
 
 
 @dataclass(frozen=True)
@@ -44,6 +45,14 @@ class StudyBlocks:
     preferred_start: int = 9  # preferred study hours, from config "preferred_hours": [9, 21]
     preferred_end: int = 21
     learn_estimates: bool = True
+
+
+@dataclass(frozen=True)
+class ExamPrep:
+    days_before: int = 7  # 0 turns exam review suggestions off
+    exam_minutes: int = 240
+    quiz_minutes: int = 60
+    session_minutes: int = 60
 
 
 @dataclass(frozen=True)
@@ -62,6 +71,7 @@ class Settings:
     user_context: str = ""
     user_profile: UserProfile = field(default_factory=UserProfile)
     study_blocks: StudyBlocks = field(default_factory=StudyBlocks)
+    exam_prep: ExamPrep = field(default_factory=ExamPrep)
     ical_feeds: tuple[Feed, ...] = ()
 
 
@@ -126,6 +136,7 @@ def _user_profile(raw: dict[str, Any]) -> UserProfile:
         recurring_commitments=tuple(item.strip() for item in commitments if item.strip()),
         workday_start=start,
         workday_end=end,
+        review_hour=_whole_number(_value(section, "review_hour", defaults.review_hour), "user_profile.review_hour", 0, 24, "an hour"),
     )
 
 
@@ -153,6 +164,21 @@ def _study_blocks(raw: dict[str, Any]) -> StudyBlocks:
         max_session_minutes=_whole_number(
             _value(section, "max_session_minutes", defaults.max_session_minutes), "study_blocks.max_session_minutes", 15, 240
         ),
+    )
+
+
+def _exam_prep(raw: dict[str, Any]) -> ExamPrep:
+    section = _section(raw, "exam_prep")
+    defaults = ExamPrep()
+
+    def number(key: str, low: int, high: int) -> int:
+        return _whole_number(_value(section, key, getattr(defaults, key)), f"exam_prep.{key}", low, high)
+
+    return ExamPrep(
+        days_before=number("days_before", 0, 30),
+        exam_minutes=number("exam_minutes", 15, 1200),
+        quiz_minutes=number("quiz_minutes", 15, 600),
+        session_minutes=number("session_minutes", 30, 240),
     )
 
 
@@ -201,6 +227,7 @@ def settings_from_dict(raw: Any) -> Settings:
         user_context=_text(_value(raw, "user_context", ""), "user_context"),
         user_profile=_user_profile(raw),
         study_blocks=_study_blocks(raw),
+        exam_prep=_exam_prep(raw),
         ical_feeds=_feeds(raw),
     )
 

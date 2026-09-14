@@ -108,6 +108,34 @@ class OptimizedScheduleTests(SchedulerTestCase):
         self.assertEqual(result.short_minutes, {"essay": 90})
         self.assertIn("Monday is at your daily study limit", result.sessions[0].reasons)
 
+    def test_exam_review_keeps_its_daily_cap_and_aims_at_its_target_days(self):
+        exam = {
+            **_candidate("exam:midterm", 180, 5),
+            "kind": "exam",
+            "last_day": TODAY + timedelta(days=4),
+            "day_cap": 60,
+            "target_days": [TODAY + timedelta(days=offset) for offset in (2, 3, 4)],
+        }
+
+        result = schedule([exam], [_slot(offset, 9, 21) for offset in range(5)], StudyBlocks(), TODAY)
+
+        self.assertEqual(_per_day(result.sessions), {TODAY + timedelta(days=offset): 60 for offset in (2, 3, 4)})
+        self.assertEqual(result.sessions[0].reasons[:2], ("Exam Sat Sep 19 (in 5 days)", "Spaced over 3 days before the exam"))
+
+    def test_a_target_day_without_room_does_not_leave_review_short(self):
+        exam = {
+            **_candidate("exam:midterm", 180, 3),
+            "kind": "exam",
+            "last_day": TODAY + timedelta(days=2),
+            "day_cap": 60,
+            "target_days": [TODAY + timedelta(days=offset) for offset in (0, 1, 2)],
+        }
+
+        result = schedule([exam], [_slot(1, 9, 21), _slot(2, 9, 21)], StudyBlocks(), TODAY)  # no time left today
+
+        self.assertEqual(result.short_minutes, {})
+        self.assertEqual(sum(_per_day(result.sessions).values()), 180)
+
     def test_results_are_cached(self):
         args = ([_candidate("essay", 60, 1)], [_slot(0, 9, 12)], StudyBlocks(), TODAY)
         self.assertIs(schedule(*args), schedule(*args))
@@ -129,6 +157,21 @@ class FallbackTests(SchedulerTestCase):
         self.assertEqual([(s.start.hour, _minutes(s)) for s in result.sessions], [(9, 30)])
         self.assertEqual(result.short_minutes, {"essay": 90})
         self.assertIn("Monday is at your daily study limit", result.sessions[0].reasons)
+
+    def test_greedy_scheduler_keeps_an_exam_day_cap(self):
+        exam = {**_candidate("exam:quiz", 120, 3), "kind": "exam", "day_cap": 60}
+        with mock.patch.object(scheduler, "cp_model", None):
+            result = schedule([exam], [_slot(0, 9, 12), _slot(1, 9, 12)], StudyBlocks(), TODAY)
+
+        self.assertEqual(_per_day(result.sessions), {TODAY: 60, TODAY + timedelta(days=1): 60})
+
+    def test_greedy_scheduler_goes_past_the_cap_rather_than_fall_short(self):
+        exam = {**_candidate("exam:quiz", 120, 3), "kind": "exam", "day_cap": 60}
+        with mock.patch.object(scheduler, "cp_model", None):
+            result = schedule([exam], [_slot(0, 9, 12)], StudyBlocks(), TODAY)
+
+        self.assertEqual(result.short_minutes, {})
+        self.assertEqual([(s.start.hour, s.start.minute, _minutes(s)) for s in result.sessions], [(9, 0, 60), (10, 15, 60)])
 
     def test_nothing_to_schedule(self):
         self.assertEqual(schedule([], [_slot(0, 9, 12)], StudyBlocks(), TODAY).sessions, [])

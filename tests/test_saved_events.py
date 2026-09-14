@@ -6,7 +6,14 @@ from pathlib import Path
 from unittest import mock
 
 from core import local_store, saved_events
-from core.saved_events import add_saved_events, delete_saved_event, load_saved_events, to_calendar_events, update_saved_event
+from core.saved_events import (
+    add_saved_events,
+    delete_saved_event,
+    load_saved_events,
+    set_session_status,
+    to_calendar_events,
+    update_saved_event,
+)
 
 
 class SavedEventsTests(unittest.TestCase):
@@ -105,6 +112,29 @@ class SavedEventsTests(unittest.TestCase):
         timed = update_saved_event(added["id"], {"all_day": False, "start": "08:00", "end": "08:30"})
         self.assertNotIn("all_day", timed)
         self.assertEqual((timed["start"], timed["end"]), ("08:00", "08:30"))
+
+    def test_check_ins_apply_to_timed_sessions_only(self):
+        (session,) = add_saved_events([{**self._event("09:00", "10:00", "Work on: Essay"), "ref": "study:t1"}])
+        (plain,) = add_saved_events([self._event("11:00", "12:00", "Gym")])
+
+        self.assertEqual(set_session_status(session["id"], "skipped")["status"], "skipped")
+        self.assertEqual([event["status"] for event in to_calendar_events(load_saved_events())], ["skipped", None])
+        self.assertNotIn("status", set_session_status(session["id"], None))
+        with self.assertRaises(ValueError):
+            set_session_status(plain["id"], "done")
+        with self.assertRaises(ValueError):
+            set_session_status(session["id"], "maybe")
+        with self.assertRaises(KeyError):
+            set_session_status("missing", "done")
+
+    def test_moving_a_session_clears_its_check_in(self):
+        (session,) = add_saved_events([{**self._event("09:00", "10:00", "Work on: Essay"), "ref": "study:t1"}])
+        set_session_status(session["id"], "skipped")
+        self.assertNotIn("status", update_saved_event(session["id"], {"start": "17:00", "end": "18:00"}))
+
+    def test_a_status_needs_a_ref(self):
+        (added,) = add_saved_events([{**self._event("09:00", "10:00", "Gym"), "status": "done"}])
+        self.assertNotIn("status", added)
 
     def test_invalid_updates_raise_and_change_nothing(self):
         with self.assertRaises(KeyError):

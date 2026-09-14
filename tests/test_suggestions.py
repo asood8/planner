@@ -16,6 +16,10 @@ def _local(day, hour, minute=0):
     return datetime.combine(day, time(hour, minute)).astimezone()
 
 
+def _length(item):
+    return (datetime.strptime(item["end"], "%H:%M") - datetime.strptime(item["start"], "%H:%M")).seconds // 60
+
+
 class SuggestionTestCase(unittest.TestCase):
     def setUp(self):
         temp_dir = tempfile.TemporaryDirectory()
@@ -58,6 +62,7 @@ class StudySuggestionTests(SuggestionTestCase):
         self.assertEqual(result["items"][0]["title"], "Work on: Essay ~2h")
         self.assertEqual(result["notices"], [])
         self.assertEqual(result["estimates"], [])
+        self.assertEqual(result["week"], [])
 
     @unittest.skipIf(scheduler.cp_model is None, "OR-Tools isn't installed")
     def test_sessions_explain_themselves(self):
@@ -99,6 +104,37 @@ class StudySuggestionTests(SuggestionTestCase):
             "ref": "study:t1",
         }
         self.assertEqual(self._build([self._task("Essay", 1)], [accepted])["items"], [])
+
+    def test_skipped_sessions_are_suggested_again(self):
+        yesterday = self.today - timedelta(days=1)
+        accepted = {
+            "title": "Work on: Essay",
+            "start": _local(yesterday, 9),
+            "end": _local(yesterday, 10),
+            "source": "ask_ai",
+            "ref": "study:t1",
+        }
+        self.assertEqual(self._build([self._task("Essay", 1)], [accepted])["items"], [])
+
+        items = self._build([self._task("Essay", 1)], [{**accepted, "status": "skipped"}])["items"]
+        self.assertEqual(sum(_length(item) for item in items), 60)
+
+    def test_exams_get_review_sessions_before_the_day(self):
+        exam_day = self.today + timedelta(days=3)
+        exam = {"title": "Midterm 1", "start": _local(exam_day, 10), "end": _local(exam_day, 12)}
+
+        review = [item for item in self._build(events=[exam])["items"] if item["kind"] == "exam"]
+
+        self.assertEqual(sum(_length(item) for item in review), 240)
+        self.assertEqual({item["ref"] for item in review}, {f"exam:midterm 1|{exam_day.isoformat()}"})
+        self.assertEqual({item["title"] for item in review}, {"Review for: Midterm 1"})
+        self.assertLess(max(item["date"] for item in review), exam_day.isoformat())
+        per_day = {}
+        for item in review:
+            per_day[item["date"]] = per_day.get(item["date"], 0) + _length(item)
+        self.assertTrue(all(minutes <= 90 for minutes in per_day.values()))
+        self.assertTrue(review[0]["details"].startswith(f"Exam {exam_day:%a %b %d}"))
+        self.assertIn("About 4 h of review in total", review[0]["details"])
 
     def test_dismissed_task_is_not_suggested(self):
         dismiss("study:t1")

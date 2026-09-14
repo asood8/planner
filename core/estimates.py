@@ -126,12 +126,14 @@ def estimate_for(task: dict[str, Any], settings: StudyBlocks, calibration: Calib
 
 def measure_actual(task_key: str, calendar_events: list[dict[str, Any]], now: datetime) -> int:
     """Minutes of the task's study sessions (saved events with ref study:<key>) that had started by `now`;
-    a session in progress counts up to now."""
+    a session in progress counts up to now, and one checked in as skipped doesn't count."""
     ref = f"study:{task_key}"
     total = 0
     for event in calendar_events:
         start, end = event.get("start"), event.get("end")
-        if event.get("ref") != ref or not isinstance(start, datetime) or not isinstance(end, datetime) or start >= now:
+        if event.get("ref") != ref or event.get("status") == "skipped":
+            continue
+        if not isinstance(start, datetime) or not isinstance(end, datetime) or start >= now:
             continue
         total += int((min(end, now) - start).total_seconds() // 60)
     return total

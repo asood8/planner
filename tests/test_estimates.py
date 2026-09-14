@@ -108,6 +108,10 @@ class MeasureActualTests(unittest.TestCase):
         self.assertEqual(measure_actual("t1", events, NOW), 120)
         self.assertEqual(measure_actual("t1", [], NOW), 0)
 
+    def test_skipped_sessions_do_not_count(self):
+        skipped = {**self._session(NOW - timedelta(days=1), 90), "status": "skipped"}
+        self.assertEqual(measure_actual("t1", [skipped], NOW), 0)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -150,6 +150,18 @@ Note: This is daily.
         self.assertTrue(by_title["Work on: Essay"]["editable"])
         self.assertFalse(by_title["Due: PS3"]["editable"])
 
+    def test_saved_sessions_carry_their_ref_and_check_in(self):
+        start = datetime.combine(date.today(), time(9)).astimezone()
+        session = {
+            "title": "Work on: Essay", "start": start, "end": start + timedelta(hours=1), "source": "ask_ai",
+            "id": "e1", "batch": "b1", "ref": "study:t1", "status": "skipped",
+        }
+
+        (entry,) = [e for e in to_fullcalendar_events({"date": date.today(), "events": [session]}, {}, None, []) if e.get("category") == "ask_ai"]
+
+        self.assertEqual((entry["extendedProps"]["ref"], entry["extendedProps"]["status"]), ("study:t1", "skipped"))
+        self.assertTrue(entry["extendedProps"]["details"].startswith("Skipped."))
+
     def test_reply_suggestion_does_not_hide_a_plan_block_at_the_same_time(self):
         today = date.today()
         reply = {"ref": "reply:e1:0", "kind": "reply", "title": "Reply: RSVP", "date": today.isoformat(),

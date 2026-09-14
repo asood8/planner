@@ -251,6 +251,27 @@
       font: 500 14px/1.2 var(--ui);
     }
 
+    /* Coming up this week: red pen, under a quiet heading */
+    .notices-head { margin: 18px 0 0; font-size: 12.5px; font-weight: 600; color: var(--graphite); }
+    .notices-head + .notices { margin-top: 6px; }
+
+    /* Check-ins and the end-of-day review */
+    .checkin-list, .review-open { list-style: none; margin: 10px 0 0; padding: 0; }
+    .checkin-list li, .review-open li {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 12px;
+      padding: 7px 0;
+      border-bottom: 1px solid var(--rule);
+    }
+    .checkin-what { min-width: 0; }
+    .checkin-title { display: block; font-weight: 600; }
+    .checkin-when { display: block; font-size: 12.5px; color: var(--graphite); }
+    .checkin-actions { display: flex; gap: 12px; flex: none; }
+    .review-line { margin: 8px 0 0; font-size: 13.5px; }
+    .review-line.quiet { font-size: 12.5px; color: var(--graphite); }
+
     /* ---- Status footer (replaces the floating connections box) ---- */
     .sheet-footer { padding: 12px 28px 14px; border-top: 1px solid var(--rule); font-size: 12px; color: var(--graphite); }
     .sources { display: flex; flex-wrap: wrap; gap: 4px 11px; }
@@ -358,6 +379,10 @@
     #calendar .fc-event.suggestion .ev-title { font-family: var(--text); font-style: italic; font-weight: 400; }
     #calendar .fc-event.suggestion.kind-deadline { border-color: var(--pen); }
     #calendar .fc-event.suggestion.kind-deadline .fc-event-main { color: var(--pen); }
+
+    /* Checked-in work sessions: skipped ones are crossed out. */
+    #calendar .fc-event.status-skipped { opacity: 0.5; }
+    #calendar .fc-event.status-skipped .ev-title { text-decoration: line-through; }
 
     /* Red pen around anything that overlaps. */
     #calendar .fc-event.has-conflict { outline: 1.5px solid var(--pen); outline-offset: 1px; }
@@ -496,6 +521,26 @@
         {% endif %}
 
         <ul id="notices" class="notices"{% if not notices %} hidden{% endif %}>{% for notice in notices or [] %}<li>{{ notice | e }}</li>{% endfor %}</ul>
+        <p id="week-head" class="notices-head"{% if not week_notes %} hidden{% endif %}>Coming up this week</p>
+        <ul id="week-notes" class="notices"{% if not week_notes %} hidden{% endif %}>{% for note in week_notes or [] %}<li>{{ note | e }}</li>{% endfor %}</ul>
+
+        {% if live %}
+        <section id="checkin-box" class="section" hidden>
+          <h2 class="section-title">Did these happen?</h2>
+          <p class="field-help">Skipped time goes back into the suggestions.</p>
+          <ul id="checkin-list" class="checkin-list"></ul>
+        </section>
+        <p id="checkin-status" class="msg" aria-live="polite" hidden></p>
+
+        <section id="review-box" class="section" hidden>
+          <h2 class="section-title">Wrapping up today</h2>
+          <p id="review-finished" class="review-line"></p>
+          <p id="review-sessions" class="review-line quiet"></p>
+          <p id="review-open-head" class="review-line quiet">Still open. These get time suggested tomorrow.</p>
+          <ul id="review-open" class="review-open"></ul>
+          <p id="review-tomorrow" class="review-line"></p>
+        </section>
+        {% endif %}
 
         <section class="section">
           <div class="section-head">
@@ -589,6 +634,8 @@
     const events = Array.isArray(rawEvents) ? rawEvents : [];
     // True when served by server.py: live data, saving and deleting events, suggestions, Generate plan.
     const LIVE = {{ 'true' if live else 'false' }};
+    // Check-ins, the end-of-day review, and the week ahead as of page load (server.py only).
+    const INITIAL_STATE = {{ (state_json or '{}') | safe }};
     const DEFAULT_MODEL = {{ ollama_model | tojson }};
     const MODE_LABELS = { daily: 'Today', weekly: 'This week', all: 'Both' };
 
@@ -725,6 +772,7 @@
           const props = arg.event.extendedProps || {};
           const classes = ['cat-' + (props.category || 'event')];
           if (props.suggestion && props.suggestion.kind) classes.push('kind-' + props.suggestion.kind);
+          if (props.status) classes.push('status-' + props.status);
           const { start, end, allDay } = arg.event;
           if (!allDay && start && end && end - start <= 50 * 60 * 1000) classes.push('compact');
           return classes;
@@ -748,6 +796,7 @@
           const title = document.createElement('span');
           title.className = 'ev-title';
           title.textContent = props.source === 'task' ? arg.event.title.replace(/^Task:\s*/, '') : arg.event.title;
+          if (props.status === 'done') title.textContent = '✓ ' + title.textContent;
           wrap.appendChild(title);
           return { domNodes: [wrap] };
         },
@@ -758,7 +807,8 @@
           const props = info.event.extendedProps || {};
           if (props.source === 'ask_ai' && props.id) {
             const siblings = calendar.getEvents().filter(e => props.batch && e.extendedProps.batch === props.batch);
-            const actions = [{ label: 'Delete this event', primary: true, run: () => deleteSaved(props.id, false) }];
+            const actions = checkInActions(info.event);
+            actions.push({ label: 'Delete this event', primary: actions.length === 0, run: () => deleteSaved(props.id, false) });
             if (siblings.length > 1) {
               actions.push({ label: `Delete all ${siblings.length} from the same note`, run: () => deleteSaved(props.id, true) });
             }
@@ -774,7 +824,8 @@
             showActions(info.jsEvent, info.event.title, [
               { label: 'Add to calendar', primary: true, run: () => acceptSuggestion(item) },
               {
-                label: item.kind === 'study' ? 'Stop suggesting time for this task' : 'Dismiss',
+                label: item.kind === 'study' ? 'Stop suggesting time for this task'
+                  : item.kind === 'exam' ? 'Stop suggesting review for this exam' : 'Dismiss',
                 run: () => dismissSuggestion(item.ref),
               },
             ]);
@@ -787,7 +838,8 @@
           const tooltipText = info.event.title
             + (props.details ? '\n' + props.details : '')
             + (props.conflict ? '\nOverlaps another event.' : '')
-            + (LIVE && props.source === 'task' ? '\nClick to mark it done.' : '');
+            + (LIVE && props.source === 'task' ? '\nClick to mark it done.' : '')
+            + (LIVE && isPastSession(info.event) && !props.status ? '\nDid it happen? Click to check in.' : '');
 
           function onMouseMove(ev) {
             fcTooltip.style.left = (ev.pageX + 14) + 'px';
@@ -848,6 +900,9 @@
           renderNotices(Array.isArray(data.notices) ? data.notices : []);
           renderDone(Array.isArray(data.done) ? data.done : []);
           renderEstimates(Array.isArray(data.estimates) ? data.estimates : []);
+          renderWeek(Array.isArray(data.week) ? data.week : []);
+          renderCheckins(Array.isArray(data.checkins) ? data.checkins : []);
+          renderReview(data.review || null);
         } catch (err) {
           console.error('Calendar refresh failed:', err);
         }
@@ -881,6 +936,124 @@
           console.error('Dismiss failed:', err);
         }
         await refreshCalendar();
+      }
+
+      // --- Coming up this week (packed days and crunches) ---
+      function renderWeek(lines) {
+        const list = document.getElementById('week-notes');
+        const head = document.getElementById('week-head');
+        list.innerHTML = '';
+        lines.forEach(function (text) {
+          const item = document.createElement('li');
+          item.textContent = text;
+          list.appendChild(item);
+        });
+        list.hidden = head.hidden = lines.length === 0;
+      }
+
+      // --- Check-ins: did past work sessions happen? Skipped time is suggested again. ---
+      function isPastSession(event) {
+        const props = event.extendedProps || {};
+        return /^(study|exam):/.test(props.ref || '') && !event.allDay && Boolean(event.end) && event.end <= new Date();
+      }
+
+      function checkInActions(event) {
+        const props = event.extendedProps || {};
+        if (!isPastSession(event)) return [];
+        const actions = [];
+        if (props.status !== 'done') actions.push({ label: 'I did this', primary: !props.status, run: () => checkIn(props.id, 'done') });
+        if (props.status !== 'skipped') actions.push({ label: 'I skipped this', run: () => checkIn(props.id, 'skipped') });
+        if (props.status) actions.push({ label: 'Clear the check-in', run: () => checkIn(props.id, null) });
+        return actions;
+      }
+
+      function renderCheckins(items) {
+        const box = document.getElementById('checkin-box');
+        const list = document.getElementById('checkin-list');
+        if (!box || !list) return;
+        list.innerHTML = '';
+        items.forEach(function (item) {
+          const row = document.createElement('li');
+          const what = document.createElement('span');
+          what.className = 'checkin-what';
+          const title = document.createElement('span');
+          title.className = 'checkin-title';
+          title.textContent = item.title;
+          const when = document.createElement('span');
+          when.className = 'checkin-when';
+          when.textContent = describeEvent(item);
+          what.append(title, when);
+          const actions = document.createElement('span');
+          actions.className = 'checkin-actions';
+          [['Did it', 'done'], ['Skipped', 'skipped']].forEach(function ([label, status]) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'text-link';
+            button.textContent = label;
+            button.addEventListener('click', () => checkIn(item.id, status));
+            actions.appendChild(button);
+          });
+          row.append(what, actions);
+          list.appendChild(row);
+        });
+        box.hidden = items.length === 0;
+      }
+
+      async function checkIn(id, status) {
+        const statusEl = document.getElementById('checkin-status');
+        try {
+          await postJson(`/sessions/${encodeURIComponent(id)}/status`, { status });
+          if (status === 'skipped') showMessage(statusEl, 'Skipped. Its time goes back into the suggestions.', 'ok', 5000);
+        } catch (err) {
+          console.error('Check-in failed:', err);
+          alert(`Couldn't save the check-in: ${err.message}`);
+        }
+        await refreshCalendar();
+      }
+
+      // --- Wrapping up today (from user_profile.review_hour) ---
+      function renderReview(review) {
+        const box = document.getElementById('review-box');
+        if (!box) return;
+        box.hidden = !review;
+        if (!review) return;
+
+        const finished = Array.isArray(review.finished) ? review.finished : [];
+        document.getElementById('review-finished').textContent = finished.length
+          ? `Finished today: ${finished.join(', ')}.`
+          : 'Nothing marked done today.';
+
+        const sessions = review.sessions || {};
+        const parts = [];
+        if (sessions.done) parts.push(`${sessions.done} done`);
+        if (sessions.skipped) parts.push(`${sessions.skipped} skipped`);
+        if (sessions.unchecked) parts.push(`${sessions.unchecked} to check in`);
+        const sessionLine = document.getElementById('review-sessions');
+        sessionLine.textContent = parts.length ? `Work sessions today: ${parts.join(', ')}.` : '';
+        sessionLine.hidden = parts.length === 0;
+
+        const stillOpen = Array.isArray(review.open) ? review.open : [];
+        const list = document.getElementById('review-open');
+        list.innerHTML = '';
+        stillOpen.forEach(function (task) {
+          const row = document.createElement('li');
+          const title = document.createElement('span');
+          title.textContent = task.title;
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.className = 'text-link';
+          button.textContent = 'Mark done';
+          button.addEventListener('click', (ev) => markTaskDone(task.key, task.title, ev));
+          row.append(title, button);
+          list.appendChild(row);
+        });
+        list.hidden = document.getElementById('review-open-head').hidden = stillOpen.length === 0;
+        document.getElementById('review-tomorrow').textContent = review.tomorrow || '';
+      }
+
+      if (LIVE) {
+        renderCheckins(Array.isArray(INITIAL_STATE.checkins) ? INITIAL_STATE.checkins : []);
+        renderReview(INITIAL_STATE.review || null);
       }
 
       // --- Drag and drop: saved events move; dragging a suggestion adds it at the new time ---

@@ -4,12 +4,14 @@ from __future__ import annotations
 import json
 import logging
 from concurrent.futures import ThreadPoolExecutor
+from datetime import date, datetime
 from typing import Any
 
+from core import timeutil
 from core.context_builder import build_context
 from core.done_tasks import without_done
 from core.logs import log_failure
-from core.normalizer import normalize
+from core.normalizer import normalize, task_due_day
 from core.prompt_builder import PLAN_REQUESTS, build_prompt
 from core.saved_events import load_saved_events, to_calendar_events
 from core.settings import Settings
@@ -40,6 +42,40 @@ def _with_deadlines(tasks: Any, deadlines: list[dict[str, Any]]) -> Any:
     return list(tasks or []) + deadlines
 
 
+def _same_title(title: Any) -> str:
+    return " ".join(str(title or "").casefold().split())
+
+
+def merge_feed_events(
+    events: list[dict[str, Any]], feed_events: list[dict[str, Any]], feed_deadlines: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Google events plus feed events, without the copies that appear when a feed is also subscribed in Google Calendar.
+
+    A feed event with the same title and start as a Google event is left out. So is a Google event that copies
+    a feed deadline (same title, on the due date, and at the due time if there is one): the deadline already
+    shows as a task.
+    """
+    google = {(_same_title(event.get("title")), event.get("start")) for event in events}
+    kept_feed = [event for event in feed_events if (_same_title(event.get("title")), event.get("start")) not in google]
+
+    deadlines = {(_same_title(item.get("title")), task_due_day(item), item.get("due_time")) for item in feed_deadlines}
+
+    def copies_a_deadline(event: dict[str, Any]) -> bool:
+        title, start = _same_title(event.get("title")), event.get("start")
+        if isinstance(start, datetime):
+            local = timeutil.to_local(start)
+            return (title, local.date(), local.strftime("%H:%M")) in deadlines or (title, local.date(), None) in deadlines
+        if isinstance(start, date):
+            return any(key[:2] == (title, start) for key in deadlines)
+        return False
+
+    kept_google = [event for event in events if not copies_a_deadline(event)]
+    dropped = len(events) + len(feed_events) - len(kept_google) - len(kept_feed)
+    if dropped:
+        logger.info("Left out %d calendar entries that duplicate a feed.", dropped)
+    return kept_google + kept_feed
+
+
 def _task_count(tasks: Any) -> int:
     if isinstance(tasks, dict):
         return sum(len(items) for items in tasks.values() if isinstance(items, list))
@@ -49,8 +85,8 @@ def _task_count(tasks: Any) -> int:
 def fetch_sources(creds, settings: Settings) -> tuple[list, Any, list, dict[str, bool | None]]:
     """Fetch calendar events, tasks, unread Gmail, and iCal feeds in parallel.
 
-    Returns (events, tasks, emails, status). Feed events are merged into events and feed deadlines
-    into tasks. status maps calendar_ok/tasks_ok/gmail_ok/feeds_ok to True (fetched), False (failed),
+    Returns (events, tasks, emails, status). Feed events are merged into events (without duplicates, see
+    merge_feed_events) and feed deadlines into tasks. status maps calendar_ok/tasks_ok/gmail_ok/feeds_ok to True (fetched), False (failed),
     or None (not fetched: Gmail disabled, or no feeds configured).
     """
     with ThreadPoolExecutor(max_workers=4) as executor:
@@ -71,7 +107,7 @@ def fetch_sources(creds, settings: Settings) -> tuple[list, Any, list, dict[str,
             log_failure(logger, "Calendar feeds failed", exc)
             feed_events, feed_deadlines, feeds_ok = [], [], False
 
-    events = list(events) + feed_events
+    events = merge_feed_events(list(events), feed_events, feed_deadlines)
     tasks = _with_deadlines(tasks, feed_deadlines)
     status = {"calendar_ok": calendar_ok, "tasks_ok": tasks_ok, "gmail_ok": gmail_ok, "feeds_ok": feeds_ok}
     logger.info("Fetched %d events, %d tasks, and %d unread emails.", len(events), _task_count(tasks), len(emails))

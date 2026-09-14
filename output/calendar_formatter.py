@@ -10,7 +10,12 @@ from core.normalizer import task_key
 # Saved Ask AI events and accepted suggestions (click to delete, drag to move).
 ASK_AI_COLOR = "#C026D3"
 # Suggestions are drawn as white boxes with a dashed border in their kind's color.
-SUGGESTION_COLORS = {"study": "#0D9488", "deadline": "#DC2626", "reply": "#D97706"}
+SUGGESTION_COLORS = {"study": "#0D9488", "exam": "#0D9488", "deadline": "#DC2626", "reply": "#D97706"}
+SESSION_KINDS = ("study", "exam")
+STATUS_DETAILS = {
+    "done": "You did this session.",
+    "skipped": "Skipped. Its time went back into the suggestions.",
+}
 
 
 def _coerce_date(value: Any) -> date | None:
@@ -151,11 +156,14 @@ def _calendar_event_entry(event: dict[str, Any]) -> dict[str, Any] | None:
 
     if event.get("source") == "ask_ai":
         category, color = "ask_ai", ASK_AI_COLOR
+        status = event.get("status")
         extended_props = {
-            "details": f"{event.get('description') or 'Added by Ask AI'}. Click to delete, or drag to move.",
+            "details": STATUS_DETAILS.get(status) or f"{event.get('description') or 'Added by Ask AI'}. Click to delete, or drag to move.",
             "source": "ask_ai",
             "id": event.get("id"),
             "batch": event.get("batch"),
+            "ref": event.get("ref"),
+            "status": status,
         }
     else:
         category, color = _categorize_event(event)
@@ -250,7 +258,7 @@ def to_fullcalendar_events(
     taken_starts |= {
         entry["start"]
         for entry in suggestion_entries
-        if not entry.get("allDay") and entry["extendedProps"]["suggestion"].get("kind") == "study"
+        if not entry.get("allDay") and entry["extendedProps"]["suggestion"].get("kind") in SESSION_KINDS
     }
     events.extend(event for event in plan_events if event["start"] not in taken_starts)
     events.extend(calendar_entries)

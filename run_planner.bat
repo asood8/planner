@@ -15,7 +15,8 @@ if "%~1"=="" (
   set ARGS=%*
 )
 
-call :ensure_ollama
+rem The evening review doesn't use the model, so it doesn't need Ollama.
+echo %ARGS% | findstr /c:"--review" >nul || call :ensure_ollama
 
 echo Running planner with: %ARGS%
 "%PYTHON_EXE%" plan.py %ARGS%

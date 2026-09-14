@@ -16,6 +16,10 @@ fine-grained time of day out of the optimization, which is what made proving an 
 The greedy schedule is given to the solver as a starting hint, so the optimized answer is never worse than it.
 Each session comes back with the reasons that applied, which the page shows. Without OR-Tools, or if the
 solver fails, the greedy schedule (earliest free time, still within the daily limit) is used instead.
+
+Exam review (core/exam_prep.py) adds two things to a candidate: day_cap, its share per day (going over costs
+the same as cramming, and it caps session length), and target_days, which replaces the cost of putting work off
+with the distance to the nearest target day, so review is spread out and ends the day before the exam.
 """
 from __future__ import annotations
 
@@ -75,10 +79,12 @@ def _minutes(start: datetime, end: datetime) -> int:
     return int((end - start).total_seconds() // 60)
 
 
-def _due_phrase(due: date, today: date) -> str:
+def _due_phrase(candidate: dict[str, Any], today: date) -> str:
+    due = candidate["due"]
     days = (due - today).days
     when = "overdue" if days < 0 else "today" if days == 0 else "tomorrow" if days == 1 else f"in {days} days"
-    return f"Due {due:%a %b %d} ({when})"
+    label = "Exam" if candidate.get("kind") == "exam" else "Due"
+    return f"{label} {due:%a %b %d} ({when})"
 
 
 def _inside_preferred(start: datetime, end: datetime, settings: StudyBlocks) -> bool:
@@ -102,7 +108,10 @@ def schedule(
         return Schedule([], {}, "none")
     day_loads = day_loads or {}
     cache_key = (
-        tuple((c["key"], c["remaining"], c["due"], c["last_day"]) for c in candidates),
+        tuple(
+            (c["key"], c["remaining"], c["due"], c["last_day"], c.get("day_cap"), tuple(c.get("target_days") or ()))
+            for c in candidates
+        ),
         tuple((start, end) for start, end in slots),
         settings,
         today,
@@ -163,11 +172,15 @@ def _optimize(candidates, slots, settings: StudyBlocks, today: date, day_loads: 
     objective = []
     for t, candidate in enumerate(candidates):
         need = -(-candidate["remaining"] // 15)
+        day_cap = candidate.get("day_cap", 0) // 15  # units allowed per day (exam review); 0 means no cap
+        targets = candidate.get("target_days")
+        # Days the work waits, or for spaced review, days away from the nearest target day.
+        waits = [min(abs((day - target).days) for target in targets) for day in days] if targets else delay
         mine = []  # (unit, length, variable)
         for u in range(count):
             if days[u] > candidate["last_day"]:
                 continue
-            for length in range(min(min_run, need), min(max_run, need) + 1):
+            for length in range(min(min_run, need), min(max_run, need, day_cap or need) + 1):
                 if not fits(u, length):
                     break  # longer sessions won't fit either
                 var = model.new_bool_var(f"s{t}_{u}_{length}")
@@ -180,7 +193,7 @@ def _optimize(candidates, slots, settings: StudyBlocks, today: date, day_loads: 
                     covering[u + length].append(var)  # the break after it
                 by_day.setdefault(days[u], []).append(length * var)
                 # Time outside the preferred hours, and each day the work waits.
-                cost = W_SESSION + sum(W_OUTSIDE_HOURS * outside[v] + W_DELAY * delay[v] for v in range(u, u + length))
+                cost = W_SESSION + sum(W_OUTSIDE_HOURS * outside[v] + W_DELAY * waits[v] for v in range(u, u + length))
                 objective.append(cost * var)
 
         short = model.new_int_var(0, need, f"short{t}")
@@ -193,14 +206,16 @@ def _optimize(candidates, slots, settings: StudyBlocks, today: date, day_loads: 
         days_left = max(0, (candidate["due"] - today).days)
         objective.append((W_SHORTFALL + W_URGENCY * max(0, 7 - days_left)) * short)
 
-        # Spaced practice: beyond one full session of this task in a day costs extra.
-        if need > max_run:
+        # Spaced practice: beyond one full session of this task in a day (or its day_cap) costs extra. It's a cost,
+        # not a rule, so a day with no room (say, today, late at night) can't leave the work short.
+        daily = day_cap or max_run
+        if need > daily:
             per_day: dict[date, list] = {}
             for u, length, var in mine:
                 per_day.setdefault(days[u], []).append(length * var)
             for day, terms in per_day.items():
                 over = model.new_int_var(0, need, f"over{t}_{day:%Y%m%d}")
-                model.add(over >= sum(terms) - max_run)
+                model.add(over >= sum(terms) - daily)
                 objective.append(W_CRAMMING * over)
 
     # No overlaps, and a break after each session.
@@ -309,19 +324,26 @@ def _greedy(candidates, slots, settings: StudyBlocks, day_loads: dict[date, int]
     placed: Spans = {}
     for t, candidate in enumerate(candidates):
         remaining = candidate["remaining"]
+        cap = candidate.get("day_cap")
+        used: dict[date, int] = {}  # this candidate's minutes per day, for its day_cap
         spans = []
-        for day, slot in zip(days, work):
-            if day > candidate["last_day"] or remaining <= 0:
-                break
-            budget = min(remaining, left.setdefault(day, settings.max_minutes_per_day - day_loads.get(day, 0)))
-            if budget < min(MIN_SESSION_MINUTES, remaining):
-                continue
-            taken = allocate([slot], budget, day, settings.max_session_minutes)
-            minutes = sum(_minutes(start, end) for start, end in taken)
-            left[day] -= minutes
-            remaining -= minutes
-            spans.extend(taken)
-        placed[t] = spans
+        # Within the day_cap first; whatever doesn't fit that way then goes wherever there's room.
+        for capped in ((True, False) if cap else (False,)):
+            for day, slot in zip(days, work):
+                if day > candidate["last_day"] or remaining <= 0:
+                    break
+                budget = min(remaining, left.setdefault(day, settings.max_minutes_per_day - day_loads.get(day, 0)))
+                if capped:
+                    budget = min(budget, cap - used.get(day, 0))
+                if budget < min(MIN_SESSION_MINUTES, remaining):
+                    continue
+                taken = allocate([slot], budget, day, settings.max_session_minutes)
+                minutes = sum(_minutes(start, end) for start, end in taken)
+                left[day] -= minutes
+                used[day] = used.get(day, 0) + minutes
+                remaining -= minutes
+                spans.extend(taken)
+        placed[t] = sorted(spans)
     return placed
 
 
@@ -340,11 +362,13 @@ def _finish(candidates, placed: Spans, settings: StudyBlocks, today: date, day_l
             short[candidate["key"]] = missing
         spread = len({start.date() for start, _ in spans})
         for start, end in spans:
-            reasons = [_due_phrase(candidate["due"], today)]
+            reasons = [_due_phrase(candidate, today)]
             if method == "greedy":
                 reasons.append("The earliest free time before it's due")
             else:
-                if spread > 1:
+                if spread > 1 and candidate.get("kind") == "exam":
+                    reasons.append(f"Spaced over {spread} days before the exam")
+                elif spread > 1:
                     reasons.append(f"Split across {spread} days so it isn't crammed")
                 if _inside_preferred(start, end, settings):
                     reasons.append("Inside your preferred study hours")

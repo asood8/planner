@@ -48,6 +48,36 @@ class FetchSourcesTests(unittest.TestCase):
         self.assertEqual((emails, status["gmail_ok"]), ([], None))
 
 
+class MergeFeedEventsTests(unittest.TestCase):
+    def test_copies_of_feed_items_are_left_out(self):
+        lecture = datetime.combine(date(2026, 9, 15), time(10)).astimezone()
+        due = datetime(2026, 9, 16, tzinfo=timezone.utc)
+        google = [
+            {"title": "CS 101 Lecture", "start": lecture},
+            {"title": "HW 3  [CS101]", "start": datetime.combine(date(2026, 9, 16), time(23, 59)).astimezone()},
+            {"title": "Reading", "start": date(2026, 9, 16)},
+            {"title": "Dentist", "start": lecture},
+        ]
+        feed_events = [
+            {"title": "cs 101 lecture", "start": lecture, "feed": "Canvas"},
+            {"title": "Office hours", "start": lecture, "feed": "Canvas"},
+        ]
+        deadlines = [
+            {"id": "ical:1", "title": "HW 3 [CS101]", "due": due, "due_time": "23:59"},
+            {"id": "ical:2", "title": "Reading", "due": due, "due_time": None},
+        ]
+
+        merged = pipeline.merge_feed_events(google, feed_events, deadlines)
+
+        self.assertEqual([event["title"] for event in merged], ["CS 101 Lecture", "Dentist", "Office hours"])
+
+    def test_same_title_at_a_different_time_is_kept(self):
+        start = datetime.combine(date(2026, 9, 16), time(10)).astimezone()
+        deadline = {"id": "ical:1", "title": "HW 3", "due": datetime(2026, 9, 16, tzinfo=timezone.utc), "due_time": "23:59"}
+        merged = pipeline.merge_feed_events([{"title": "HW 3", "start": start}], [], [deadline])
+        self.assertEqual(len(merged), 1)
+
+
 class PrepareContextsTests(unittest.TestCase):
     def setUp(self):
         temp_dir = tempfile.TemporaryDirectory()

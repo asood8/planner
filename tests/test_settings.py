@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from core.settings import ConfigError, Feed, Settings, StudyBlocks, UserProfile, load_settings, settings_from_dict
+from core.settings import ConfigError, ExamPrep, Feed, Settings, StudyBlocks, UserProfile, load_settings, settings_from_dict
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -62,6 +62,9 @@ class LoadSettingsTests(unittest.TestCase):
             ({"study_blocks": {"preferred_hours": [21, 9]}}, "study_blocks.preferred_hours must start before it ends"),
             ({"study_blocks": {"max_minutes_per_day": 5}}, "study_blocks.max_minutes_per_day must be a whole number from 15 to 960"),
             ({"study_blocks": {"learn_estimates": "no"}}, "study_blocks.learn_estimates must be true or false"),
+            ({"exam_prep": {"session_minutes": 10}}, "exam_prep.session_minutes must be a whole number from 30 to 240"),
+            ({"exam_prep": "yes"}, "exam_prep must be an object"),
+            ({"user_profile": {"review_hour": 25}}, "user_profile.review_hour must be an hour from 0 to 24"),
             ({"user_profile": {"recurring_commitments": [1, 2]}}, "recurring_commitments must be a list of text"),
             (["not", "an", "object"], "must be a JSON object"),
             ("{not json", "isn't valid JSON"),
@@ -80,6 +83,11 @@ class StudySettingsTests(unittest.TestCase):
             settings.study_blocks,
             StudyBlocks(max_minutes_per_day=180, preferred_start=10, preferred_end=20, learn_estimates=False),
         )
+
+    def test_exam_prep_and_review_settings_are_read(self):
+        settings = settings_from_dict({"exam_prep": {"days_before": 5, "exam_minutes": 300}, "user_profile": {"review_hour": 20}})
+        self.assertEqual(settings.exam_prep, ExamPrep(days_before=5, exam_minutes=300))
+        self.assertEqual(settings.user_profile.review_hour, 20)
 
 
 class FeedSettingsTests(unittest.TestCase):

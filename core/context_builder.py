@@ -64,7 +64,7 @@ def _append_task_section(lines: list[str], heading: str, tasks: list[dict[str, A
 
 def _append_suggestion_sections(lines: list[str], suggestions: dict[str, Any]) -> None:
     items = suggestions.get("items", [])
-    study = [item for item in items if item.get("kind") == "study"]
+    study = [item for item in items if item.get("kind") in ("study", "exam")]
     deadlines = [item for item in items if item.get("kind") == "deadline"]
     replies = [item for item in items if item.get("kind") == "reply"]
     if study:
@@ -83,6 +83,10 @@ def _append_suggestion_sections(lines: list[str], suggestions: dict[str, Any]) -
     if notices:
         lines += ["", "NOT ENOUGH TIME"]
         lines.extend(f"  - {notice}" for notice in notices)
+    week = suggestions.get("week", [])
+    if week:
+        lines += ["", "HEADS-UP FOR THE WEEK"]
+        lines.extend(f"  - {note}" for note in week)
 
 
 def build_context(

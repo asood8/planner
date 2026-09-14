@@ -3,6 +3,8 @@
 Stored events look like {"id", "batch", "date": "YYYY-MM-DD", "start": "HH:MM", "end": "HH:MM", "title"}.
 All-day items have "all_day": true and empty start/end. An optional "ref" names the suggestion an event
 was accepted from. Every event created by one request shares a batch id so they can be deleted together.
+A timed accepted suggestion (a work session) can also carry "status": "done" or "skipped" once the user
+checks in on it (core/checkins.py); moving it clears that, since it's a new plan.
 """
 from __future__ import annotations
 
@@ -17,6 +19,7 @@ FILE_NAME = "ask_ai_events.json"
 KEEP_DAYS = 30
 MAX_TITLE_LENGTH = 100
 MAX_REF_LENGTH = 200
+STATUSES = ("done", "skipped")
 CLOCK_FORMATS = ("%H:%M", "%H:%M:%S", "%I:%M %p", "%I:%M%p", "%I %p")
 
 
@@ -55,6 +58,8 @@ def _clean(raw: Any) -> dict[str, Any] | None:
     ref = str(raw.get("ref") or "").strip()[:MAX_REF_LENGTH]
     if ref:
         event["ref"] = ref
+        if raw.get("status") in STATUSES and not event.get("all_day"):
+            event["status"] = raw["status"]
     return event
 
 
@@ -96,7 +101,8 @@ def add_saved_events(raw_events: list[Any]) -> list[dict[str, Any]]:
 
 
 def update_saved_event(event_id: str, changes: dict[str, Any]) -> dict[str, Any]:
-    """Move or resize a saved event (date/start/end/all_day). Title, ref, id, and batch are kept.
+    """Move or resize a saved event (date/start/end/all_day). Title, ref, id, and batch are kept; a check-in
+    status is cleared, because a moved session is a new plan.
 
     Raises KeyError if there's no such event and ValueError if the new timing is invalid.
     """
@@ -106,13 +112,37 @@ def update_saved_event(event_id: str, changes: dict[str, Any]) -> dict[str, Any]
         if index is None:
             raise KeyError(event_id)
         allowed = {key: value for key, value in changes.items() if key in ("date", "start", "end", "all_day")}
-        cleaned = _clean({**events[index], **allowed})
+        current = {key: value for key, value in events[index].items() if key != "status"}
+        cleaned = _clean({**current, **allowed})
         if cleaned is None:
             raise ValueError("The event needs a date, and an end time after its start on the same day.")
         updated = {"id": events[index]["id"], "batch": events[index].get("batch"), **cleaned}
         events[index] = updated
         _write(events)
         return updated
+
+
+def set_session_status(event_id: str, status: str | None) -> dict[str, Any]:
+    """Check in on a work session: "done", "skipped", or None to clear it.
+
+    Raises KeyError if there's no such event, and ValueError for another status or an event that isn't a
+    timed accepted suggestion.
+    """
+    if status is not None and status not in STATUSES:
+        raise ValueError("status must be done, skipped, or null")
+    with locked(FILE_NAME):
+        events = _read()
+        index = next((i for i, event in enumerate(events) if event.get("id") == event_id), None)
+        if index is None:
+            raise KeyError(event_id)
+        event = {key: value for key, value in events[index].items() if key != "status"}
+        if not event.get("ref") or event.get("all_day"):
+            raise ValueError("Only work sessions added from suggestions can be checked in.")
+        if status:
+            event["status"] = status
+        events[index] = event
+        _write(events)
+        return event
 
 
 def delete_saved_event(event_id: str, include_batch: bool = False) -> int:
@@ -173,6 +203,7 @@ def to_calendar_events(saved: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "id": event.get("id"),
                 "batch": event.get("batch"),
                 "ref": cleaned.get("ref"),
+                "status": cleaned.get("status"),
             }
         )
     return events

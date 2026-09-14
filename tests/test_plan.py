@@ -3,10 +3,13 @@ import tempfile
 import unittest
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
+from unittest import mock
 
+import plan
+from core import local_store
 from core.pipeline import script_safe_json
 from core.settings import Settings
-from plan import render_dashboard
+from plan import build_parser, render_dashboard
 
 
 class ScriptSafeJsonTests(unittest.TestCase):
@@ -49,10 +52,40 @@ class RenderDashboardTests(unittest.TestCase):
             path = render_dashboard(
                 "plan", {"date": date.today()}, {}, True, True, True, Settings(),
                 output_path=str(Path(tmp) / "dashboard.html"),
-                suggestions={"items": [], "notices": ["<b>Essay</b> is short"]},
+                suggestions={"items": [], "notices": ["<b>Essay</b> is short"], "week": ["<i>Tue</i> is packed"]},
             )
             html = Path(path).read_text(encoding="utf-8")
         self.assertIn("&lt;b&gt;Essay&lt;/b&gt; is short", html)
+        self.assertIn("<li>&lt;i&gt;Tue&lt;/i&gt; is packed</li>", html)
+        self.assertIn('<p id="week-head" class="notices-head">Coming up this week</p>', html)
+        self.assertIn("const INITIAL_STATE = {};", html)
+
+
+class ReviewRunTests(unittest.TestCase):
+    def setUp(self):
+        temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(temp_dir.cleanup)
+        patcher = mock.patch.object(local_store, "DATA_DIR", Path(temp_dir.name))
+        self.addCleanup(patcher.stop)
+        patcher.start()
+
+    def test_the_parser_knows_review(self):
+        self.assertTrue(build_parser().parse_args(["--review"]).review)
+
+    def test_review_sends_a_notification_without_writing_a_plan(self):
+        with mock.patch.object(plan, "get_credentials", return_value=object()), \
+                mock.patch.object(plan, "fetch_sources", return_value=([], [], [], {})) as fetch, \
+                mock.patch.object(plan, "server_is_running", return_value=False), \
+                mock.patch.object(plan, "send_toast", return_value=True) as toast, \
+                mock.patch.object(plan, "OllamaClient") as client:
+            plan.run_review(Settings())
+
+        client.assert_not_called()
+        self.assertFalse(fetch.call_args.args[1].include_gmail)
+        title, lines, open_url = toast.call_args.args
+        self.assertTrue(title.startswith("Wrapping up "))
+        self.assertEqual(lines[0], "All caught up")
+        self.assertIsNone(open_url)
 
 
 if __name__ == "__main__":

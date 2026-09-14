@@ -4,7 +4,7 @@ from unittest import mock
 from xml.etree import ElementTree
 
 from output import notify
-from output.notify import morning_summary, send_toast, toast_xml
+from output.notify import morning_summary, review_summary, send_toast, toast_xml
 
 
 class ToastXmlTests(unittest.TestCase):
@@ -58,6 +58,24 @@ class MorningSummaryTests(unittest.TestCase):
             "Nothing due today · not enough time for everything",
             "The plan couldn't be generated (is Ollama running?)",
         ])
+
+    def test_sessions_to_check_in_are_counted(self):
+        _, lines = morning_summary([], {}, [], datetime(2026, 9, 14, 8, 0), True, checkins=2)
+        self.assertEqual(lines[0], "Nothing due today · 2 sessions to check in")
+
+
+class ReviewSummaryTests(unittest.TestCase):
+    def test_lists_what_is_left_and_how_tomorrow_starts(self):
+        review = {"finished": ["Lab"], "open": [{"key": "t1", "title": "Essay"}], "tomorrow": "Tomorrow starts with Lecture at 9:00 AM."}
+
+        title, lines = review_summary(review, 1, datetime(2026, 9, 14, 21, 0))
+
+        self.assertEqual(title, "Wrapping up Monday")
+        self.assertEqual(lines, ["1 session to check in · 1 task still open · 1 done today", "Tomorrow starts with Lecture at 9:00 AM."])
+
+    def test_all_caught_up(self):
+        _, lines = review_summary({"finished": [], "open": [], "tomorrow": "Nothing yet."}, 0, datetime(2026, 9, 14, 21, 0))
+        self.assertEqual(lines[0], "All caught up")
 
 
 if __name__ == "__main__":

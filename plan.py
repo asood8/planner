@@ -1,19 +1,24 @@
 import argparse
 import logging
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 from ai.ollama_client import OllamaClient
 from auth.google_auth import get_credentials
 from core import timeutil
+from core.checkins import pending_checkins
+from core.done_tasks import load_done
 from core.email_deadlines import scan_emails
 from core.logs import log_failure, setup_logging
 from core.pipeline import build_plan_prompt, fetch_sources, prepare_contexts, script_safe_json
 from core.plan_history import save_plan
+from core.review import day_review
+from core.saved_events import load_saved_events
 from core.settings import ConfigError, Settings, load_settings
 from output.calendar_formatter import to_fullcalendar_events
 from output.formatter import format_ai_output
-from output.notify import morning_summary, send_toast, server_is_running
+from output.notify import morning_summary, review_summary, send_toast, server_is_running
 from jinja2 import Environment, FileSystemLoader
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -59,6 +64,7 @@ def render_dashboard(
         events_json=events_json,
         ai_plan_html=format_ai_output(result),
         notices=suggestions.get("notices", []),
+        week_notes=suggestions.get("week", []),
         calendar_ok=calendar_ok,
         tasks_ok=tasks_ok,
         gmail_ok=gmail_ok,
@@ -74,10 +80,31 @@ def render_dashboard(
 def notify_plan(result, plan_ok, day_context, week_context, events, suggestions, dashboard_path) -> None:
     """Windows toast with what's due and the next few items; clicking opens the web app (or the file)."""
     entries = to_fullcalendar_events(day_context, week_context, result if plan_ok else None, events, suggestions["items"])
-    title, lines = morning_summary(entries, day_context, suggestions["notices"], timeutil.now(), plan_ok)
+    now = timeutil.now()
+    checkins = pending_checkins(load_saved_events(), {entry["key"] for entry in load_done()}, now)
+    title, lines = morning_summary(entries, day_context, suggestions["notices"], now, plan_ok, len(checkins))
     open_url = SERVER_URL if server_is_running() else Path(dashboard_path).resolve().as_uri()
     if send_toast(title, lines, open_url):
         logger.info("Showed the plan notification.")
+    else:
+        logger.warning("Couldn't show a Windows notification.")
+
+
+def run_review(settings: Settings) -> None:
+    """The evening notification: sessions to check in, tasks still open, and how tomorrow starts. No plan is written."""
+    # Email isn't part of the review, so don't fetch it.
+    settings = replace(settings, include_gmail=False)
+    events, tasks, emails, _ = fetch_sources(get_credentials(), settings)
+    events, day_context, _, suggestions = prepare_contexts(events, tasks, emails, settings)
+    now = timeutil.now()
+    saved, done = load_saved_events(), load_done()
+    checkins = pending_checkins(saved, {entry["key"] for entry in done}, now)
+    open_tasks = day_context.get("tasks_overdue", []) + day_context.get("tasks_due_today", [])
+    review = day_review(now, saved, done, open_tasks, events, suggestions["items"])
+    title, lines = review_summary(review, len(checkins), now)
+    # Checking in needs the web app, so the notification only links to it when it's running.
+    if send_toast(title, lines, SERVER_URL if server_is_running() else None):
+        logger.info("Showed the evening review notification.")
     else:
         logger.warning("Couldn't show a Windows notification.")
 
@@ -89,6 +116,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--all", action="store_true", help="Generate daily, weekly, and long-term guidance")
     parser.add_argument(
         "--notify", action="store_true", help="Show a Windows notification when done (for the scheduled morning run)"
+    )
+    parser.add_argument(
+        "--review",
+        action="store_true",
+        help="Evening review: a notification with sessions to check in, tasks still open, and tomorrow (no plan)",
     )
     return parser
 
@@ -164,9 +196,12 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     timeutil.configure(settings.timezone)
 
-    logger.info("Planner run started (%s).", mode)
+    logger.info("Planner run started (%s).", "evening review" if args.review else mode)
     try:
-        run(mode, settings, args.notify)
+        if args.review:
+            run_review(settings)
+        else:
+            run(mode, settings, args.notify)
     except Exception:
         # The traceback lands in data/planner.log, which is all an unattended morning run leaves behind.
         logger.exception("Planner run failed")

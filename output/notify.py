@@ -59,20 +59,41 @@ def server_is_running(port: int = 5000) -> bool:
         return False
 
 
+def _sessions(count: int) -> str:
+    return f"{count} session{'s' if count != 1 else ''}"
+
+
+def review_summary(review: dict[str, Any], checkins: int, now: datetime) -> tuple[str, list[str]]:
+    """Toast title and two lines for the evening review (core/review.py): what's left, then how tomorrow starts."""
+    parts = []
+    if checkins:
+        parts.append(f"{_sessions(checkins)} to check in")
+    still_open = len(review.get("open", []))
+    if still_open:
+        parts.append(f"{still_open} task{'s' if still_open != 1 else ''} still open")
+    finished = len(review.get("finished", []))
+    if finished:
+        parts.append(f"{finished} done today")
+    return f"Wrapping up {now:%A}", [" · ".join(parts) or "All caught up", review.get("tomorrow", "")]
+
+
 def morning_summary(
     calendar_entries: list[dict[str, Any]],
     day_context: dict[str, Any],
     notices: list[str],
     now: datetime,
     plan_ok: bool,
+    checkins: int = 0,
 ) -> tuple[str, list[str]]:
-    """Toast title and two lines: what's due, then the next few timed items on today's calendar."""
+    """Toast title and two lines: what's due (and past sessions to check in), then the next few timed items today."""
     due_today = len(day_context.get("tasks_due_today", []))
     overdue = len(day_context.get("tasks_overdue", []))
     counts = [text for count, text in ((due_today, f"{due_today} due today"), (overdue, f"{overdue} overdue")) if count]
     first = " · ".join(counts) or "Nothing due today"
     if notices:
         first += " · not enough time for everything"
+    if checkins:
+        first += f" · {_sessions(checkins)} to check in"
 
     # FullCalendar entries use local "YYYY-MM-DDTHH:MM:SS" strings, which compare chronologically.
     today_prefix = now.strftime("%Y-%m-%dT")

@@ -37,12 +37,16 @@ On Windows, `run_planner.bat` / `run_planner.ps1` do the same using `.venv`.
   - If there isn't enough free time, a warning appears in the sidebar. If OR-Tools isn't installed, a simpler earliest-free-time scheduler is used instead.
   - All of this is set in `config.json` under `study_blocks`.
 - **Estimates that learn.** When you mark a task done, the planner adds up the study sessions for it that had started and asks **How long did it take?**, with that number filled in. Once 3 tasks have been measured, it compares how long they took with what was planned and adjusts future estimates to match. For example, if School tasks keep taking about 1.5× as long as you estimated, it plans more time for them. It learns separately for each task list, falls back to all your tasks for lists without enough history, and pulls small samples toward 1× so one unusual task can't throw it off. The sidebar's **Estimates** section shows what it has learned. To turn it off, set `learn_estimates` to `false`.
+- **Check in on past sessions.** Once a work session you added has passed, **Did these happen?** in the sidebar asks whether you did it (or click the session on the calendar). If you skipped it, its time goes back into the suggestions instead of counting as done. Sessions you don't answer still count.
+- **Exam prep.** Calendar events that look like exams (midterm, final, quiz, test) get suggested review sessions spread over the days before, ending the day before the exam: 4 hours of review for an exam and 1 for a quiz, unless the event says otherwise, like `~6h`. Tune it under `exam_prep` in `config.json`; `"days_before": 0` turns it off.
+- **Coming up this week.** Warnings in the sidebar when a day is packed with events, or when work due later in the week won't fit in the free study time left before it.
+- **Wrapping up today.** From 6 PM (`user_profile.review_hour`), the sidebar sums up the day: what you finished, how your work sessions went, what's still open (with a **Mark done** link), and how tomorrow starts. Anything unfinished gets time suggested again on its own.
 - **Email deadlines.** Your local model reads unread emails that mention a deadline or ask for a reply, once per email. Deadlines appear as suggested all-day events, and reply requests as a suggested 15-minute block.
 - Suggestions have a dashed border. Click one to add it to the planner's calendar or dismiss it, or drag a work session to a better time to add it there.
 - **Mark tasks done.** Click a task on the calendar to mark it done. This only hides it in the planner (Google Tasks isn't changed), and removes any of its study sessions that haven't started yet. **Marked done** in the sidebar lets you undo it.
 - Overlapping events get a red outline, and a line marks the current time. The **Connections** box shows whether Ollama is running and lets you pick which installed model to use. Google data is cached for 5 minutes; **↻ Refresh** fetches it again.
 
-Everything the web app saves (added events, dismissed suggestions, plan history, email scan results, and tasks marked done with how long they took) is stored in `data/` on your machine. None of it is sent to Google.
+Everything the web app saves (added events, dismissed suggestions, plan history, email scan results, tasks marked done with how long they took, and session check-ins) is stored in `data/` on your machine. None of it is sent to Google.
 
 **Canvas and other calendar feeds.** Add read-only calendar links to `config.json` under `ical_feeds`:
 
@@ -50,9 +54,11 @@ Everything the web app saves (added events, dismissed suggestions, plan history,
       {"name": "Canvas", "url": "https://canvas.example.edu/feeds/calendars/user_XXXX.ics"}
     ]
 
-In Canvas the link is under Calendar → Calendar Feed; for a Google Calendar it's the "Secret address in iCal format" in the calendar's settings. Assignments show up as tasks and get study-block suggestions; everything else shows as events. These links are private, so keep them only in `config.json`, which isn't committed.
+In Canvas the link is under Calendar → Calendar Feed; for a Google Calendar it's the "Secret address in iCal format" in the calendar's settings. Assignments show up as tasks and get study-block suggestions; everything else shows as events. If the same calendar is also subscribed in Google Calendar, the copies are left out. These links are private, so keep them only in `config.json`, which isn't committed.
 
-**Morning plan.** Run `schedule_morning_plan.bat` once to create a daily Windows task (7:00 by default, or pass a time like `schedule_morning_plan.bat 06:30`). Each morning it runs `run_planner.bat --daily --notify`, which starts Ollama if needed, writes the plan, and shows a notification with what's due and what's next. Clicking the notification opens the web app if it's running, or the saved dashboard otherwise. To remove it: `schtasks /Delete /TN "Planner morning plan" /F`.
+**Morning plan.** Run `schedule_morning_plan.bat` once to create a daily Windows task (7:00 by default, or pass a time like `schedule_morning_plan.bat 06:30`). Each morning it runs `run_planner.bat --daily --notify`, which starts Ollama if needed, writes the plan, and shows a notification with what's due, what's next, and any sessions to check in. Clicking the notification opens the web app if it's running, or the saved dashboard otherwise. To remove it: `schtasks /Delete /TN "Planner morning plan" /F`.
+
+**Evening review.** Run `schedule_evening_review.bat` once (9:00 PM by default, or pass a time) for a daily notification with the sessions to check in, the tasks still open, and how tomorrow starts. It runs `run_planner.bat --review`, which doesn't need Ollama. To remove it: `schtasks /Delete /TN "Planner evening review" /F`.
 
 Both the web app and the morning run write to `data/planner.log`, including the reason for any failure. If a morning plan didn't show up, look there first.
 

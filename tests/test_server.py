@@ -469,6 +469,58 @@ class DoneTaskEndpointTests(ServerTestCase):
         self.assertEqual(self.client.post("/tasks/time", json={"key": "nope", "minutes": 30}).status_code, 404)
 
 
+def _minutes(suggestion):
+    return (datetime.strptime(suggestion["end"], "%H:%M") - datetime.strptime(suggestion["start"], "%H:%M")).seconds // 60
+
+
+class CheckInTests(ServerTestCase):
+    def _session(self, day_offset, start, end):
+        day = (date.today() + timedelta(days=day_offset)).isoformat()
+        (saved,) = saved_events.add_saved_events([{"date": day, "start": start, "end": end, "title": "Work on: Essay", "ref": "study:t1"}])
+        return saved
+
+    def test_a_skipped_session_leaves_the_list_and_its_time_is_suggested_again(self):
+        self._set_google(tasks=[_task("Essay ~1h", 2, "t1")])
+        session = self._session(-1, "10:00", "11:00")
+
+        data = self.client.get("/api/events").get_json()
+        self.assertEqual([item["id"] for item in data["checkins"]], [session["id"]])
+        self.assertEqual([item for item in self._suggestions() if item["kind"] == "study"], [])
+
+        response = self.client.post(f"/sessions/{session['id']}/status", json={"status": "skipped"})
+        self.assertEqual(response.get_json()["event"]["status"], "skipped")
+
+        data = self.client.get("/api/events").get_json()
+        self.assertEqual(data["checkins"], [])
+        self.assertEqual(sum(_minutes(item) for item in self._suggestions() if item["kind"] == "study"), 60)
+        entry = next(event for event in data["events"] if event.get("extendedProps", {}).get("id") == session["id"])
+        self.assertEqual(entry["extendedProps"]["status"], "skipped")
+
+    def test_check_ins_are_validated(self):
+        session = self._session(-1, "10:00", "11:00")
+        (plain,) = saved_events.add_saved_events([{"date": date.today().isoformat(), "start": "09:00", "end": "10:00", "title": "Gym"}])
+
+        self.assertEqual(self.client.post(f"/sessions/{session['id']}/status", json={}).status_code, 400)
+        self.assertEqual(self.client.post(f"/sessions/{session['id']}/status", json={"status": "maybe"}).status_code, 400)
+        self.assertEqual(self.client.post(f"/sessions/{plain['id']}/status", json={"status": "done"}).status_code, 400)
+        self.assertEqual(self.client.post("/sessions/nope/status", json={"status": "done"}).status_code, 404)
+
+
+class ReviewTests(ServerTestCase):
+    def _with_review_hour(self, hour):
+        self.load_settings.return_value = replace(TEST_SETTINGS, user_profile=replace(TEST_SETTINGS.user_profile, review_hour=hour))
+
+    def test_the_review_shows_from_the_review_hour(self):
+        self._with_review_hour(0)
+        data = self.client.get("/api/events").get_json()
+        self.assertEqual(set(data["review"]), {"finished", "sessions", "open", "tomorrow"})
+        self.assertEqual(data["week"], [])
+        self.assertIn('"review": {', self.client.get("/").get_data(as_text=True))
+
+        self._with_review_hour(24)
+        self.assertIsNone(self.client.get("/api/events").get_json()["review"])
+
+
 class FeedsTests(ServerTestCase):
     def test_feeds_dot_only_when_feeds_are_configured(self):
         self.assertNotIn("Feeds:", self.client.get("/").get_data(as_text=True))
