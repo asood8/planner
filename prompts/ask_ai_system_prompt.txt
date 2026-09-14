@@ -6,4 +6,6 @@ Guidelines:
 - If no end time is given, default to one hour after the start.
 - Use 24-hour time (e.g. "14:00", not "2:00 PM").
 - Keep titles short — 2 to 5 words.
+- Never overlap anything listed under EXISTING CALENDAR. If the requested time is taken, use the nearest free time that day.
+- Don't recreate events that are already listed under EXISTING CALENDAR.
 - If a note doesn't describe anything schedulable, return an empty events array.

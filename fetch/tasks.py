@@ -22,7 +22,7 @@ def get_tasks(creds=None, include_completed=False):
     if creds is None:
         creds = get_credentials()
 
-    service = build("tasks", "v1", credentials=creds)
+    service = build("tasks", "v1", credentials=creds, cache_discovery=False)
 
     task_lists = _list_all(service.tasklists().list)
     grouped_tasks = {"overdue": [], "has_due_date": [], "no_due_date": []}
@@ -45,6 +45,7 @@ def get_tasks(creds=None, include_completed=False):
                     due_dt = None
 
             task = {
+                "id": item.get("id"),
                 "title": item.get("title") or "Untitled task",
                 "notes": item.get("notes", ""),
                 "due": due_dt,

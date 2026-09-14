@@ -1,7 +1,8 @@
 import unittest
 from datetime import date, datetime, time, timedelta, timezone
 
-from core.normalizer import _filter_week, _find_free_blocks, normalize
+from core import timeutil
+from core.normalizer import _filter_week, _find_free_blocks, free_blocks_for_day, normalize
 
 
 def _local(hour, minute=0):
@@ -30,6 +31,16 @@ class FreeBlockTests(unittest.TestCase):
     def test_workday_end_of_24_means_midnight(self):
         blocks = _find_free_blocks([], workday_start=8, workday_end=24)
         self.assertEqual(blocks[0][1] - blocks[0][0], timedelta(hours=16))
+
+    def test_free_blocks_for_another_day_use_only_that_days_events(self):
+        tomorrow = date.today() + timedelta(days=1)
+        start = datetime.combine(tomorrow, time(9)).astimezone()
+        events = [{"start": start, "end": start + timedelta(hours=2)}, {"start": _local(10), "end": _local(11)}]
+
+        blocks = free_blocks_for_day(events, tomorrow)
+
+        self.assertEqual(_hours(blocks), [(8, 9), (11, 22)])
+        self.assertEqual({block[0].date() for block in blocks}, {tomorrow})
 
 
 class NormalizeTests(unittest.TestCase):
@@ -65,6 +76,27 @@ class NormalizeTests(unittest.TestCase):
 
     def test_unparseable_event_start_is_skipped(self):
         self.assertEqual(_filter_week([{"title": "bad", "start": "not a date"}]), [])
+
+
+class DaylightSavingTests(unittest.TestCase):
+    """US clocks fall back on Sun Nov 1, 2026, so days after it are -05:00 whatever today's offset is."""
+
+    def setUp(self):
+        timeutil.configure("America/New_York")
+        self.addCleanup(timeutil.configure, None)
+
+    def test_each_days_workday_uses_that_days_offset(self):
+        ((winter_start, winter_end),) = free_blocks_for_day([], date(2026, 11, 2))
+        ((summer_start, _),) = free_blocks_for_day([], date(2026, 7, 1))
+
+        self.assertEqual((winter_start.hour, winter_end.hour), (8, 22))
+        self.assertEqual(winter_start.utcoffset(), timedelta(hours=-5))
+        self.assertEqual(summer_start.utcoffset(), timedelta(hours=-4))
+
+    def test_events_after_the_change_block_the_right_hours(self):
+        day = date(2026, 11, 2)
+        lecture = {"start": timeutil.at(day, time(10)), "end": timeutil.at(day, time(11))}
+        self.assertEqual(_hours(free_blocks_for_day([lecture], day)), [(8, 10), (11, 22)])
 
 
 if __name__ == "__main__":

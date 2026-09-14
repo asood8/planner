@@ -29,7 +29,7 @@ def get_unread_emails(creds=None, max_results=20):
     if creds is None:
         creds = get_credentials()
 
-    service = build("gmail", "v1", credentials=creds)
+    service = build("gmail", "v1", credentials=creds, cache_discovery=False)
 
     results = (
         service.users()

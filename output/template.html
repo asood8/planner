@@ -3,254 +3,795 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Planner Dashboard</title>
-  
-  <!-- Fonts and Calendar CSS -->
+  <title>Planner</title>
+
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,600;1,7..72,400&family=Schibsted+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <!-- FullCalendar v6 injects its own CSS from the JS bundle; there is no separate stylesheet. -->
 
   <style>
+    /*
+      Ink and highlighter: the dashboard is a paper planner.
+      Ink = confirmed. Highlighter color = kind of thing. Pencil (dashed, italic) = suggested, not yet added.
+      Red pen = needs attention (conflicts, warnings, the current time). Dot grid = free time.
+    */
     :root {
-      --bg-color: #f3f4f6;
-      --sidebar-bg: #ffffff;
-      --text-main: #1f2937;
-      --text-muted: #4b5563;
-      --border-color: #e5e7eb;
-    }
-    
-    body { 
-      font-family: 'Inter', system-ui, -apple-system, sans-serif; 
-      margin: 0; 
-      background: var(--bg-color); 
-      color: var(--text-main); 
-    }
-    
-    .layout { 
-      display: grid; 
-      grid-template-columns: 340px 1fr; 
-      min-height: 100vh; 
-    }
-    
-    .sidebar { 
-      background: var(--sidebar-bg); 
-      padding: 24px; 
-      border-right: 1px solid var(--border-color); 
-      overflow-y: auto; 
-      box-shadow: 2px 0 10px rgba(0,0,0,0.03);
-      z-index: 10;
-    }
-    
-    .sidebar h2 { 
-      margin-top: 0; 
-      font-size: 1.5rem;
-      font-weight: 600;
-      color: #111827;
-      border-bottom: 2px solid var(--bg-color);
-      padding-bottom: 16px;
-      margin-bottom: 20px;
-    }
-    
-    .plan-html p { 
-      margin: 0 0 12px; 
-      line-height: 1.6; 
-      font-size: 0.95rem;
-      color: var(--text-muted);
-    }
-    
-    .plan-html ul { 
-      padding-left: 20px; 
-      margin: 0 0 12px;
-      font-size: 0.95rem;
-      color: var(--text-muted);
-    }
-    
-    .main { 
-      padding: 24px; 
-      height: 100vh;
-      box-sizing: border-box;
-    }
-    
-    .calendar-container {
-      background: #ffffff;
-      padding: 24px;
-      border-radius: 12px;
-      box-shadow: 0 4px 15px rgba(0,0,0,0.04);
-      height: calc(100vh - 48px);
-      box-sizing: border-box;
-      border: 1px solid var(--border-color);
+      --paper: #FBFBF7;
+      --desk: #E4E7E0;
+      --ink: #1F2B47;
+      --ink-hover: #2C3B60;
+      --graphite: #717784;
+      --rule: #E2E5E7;
+      --rule-strong: #C9CED6;
+      --pen: #C8323B;
+      --ok: #2E9A62;
+      --warn: #D18B16;
+
+      --hl-yellow: #FFE97A;
+      --hl-pink: #FFBADB;
+      --hl-green: #C1EFB0;
+      --hl-blue: #B4DDFF;
+      --hl-orange: #FFCD92;
+
+      --ui: "Schibsted Grotesk", "Segoe UI", system-ui, sans-serif;
+      --text: "Literata", Georgia, "Times New Roman", serif;
     }
 
-    #calendar { 
-      height: 100%; 
+    [hidden] { display: none !important; }
+
+    * { box-sizing: border-box; }
+
+    html, body { height: 100%; }
+
+    body {
+      margin: 0;
+      background: var(--desk);
+      color: var(--ink);
+      font: 400 14px/1.45 var(--ui);
+      -webkit-font-smoothing: antialiased;
     }
 
-    /* Allow event titles to wrap and avoid clipping in timeGrid events */
-    .fc .fc-event, .fc-event {
-      white-space: normal !important;
-      overflow: visible !important;
-    }
-    .fc .fc-timegrid-event .fc-event-title,
-    .fc .fc-timegrid-event .fc-event-main .fc-event-title {
-      white-space: normal !important;
-      display: block !important;
-      overflow: visible !important;
-    }
-    .fc .fc-timegrid-event {
-      max-height: none !important;
-      height: auto !important;
-    }    /* Loading spinner animation */
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
+    :focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+    /* ---- The sheet: one piece of paper on the desk, two pages split by a binding rule ---- */
+    .planner {
+      display: grid;
+      grid-template-columns: 360px minmax(0, 1fr);
+      height: calc(100vh - 24px);
+      margin: 12px;
+      background: var(--paper);
+      border: 1px solid rgba(31, 43, 71, 0.14);
+      border-radius: 10px;
+      box-shadow: 0 1px 0 rgba(31, 43, 71, 0.05), 0 22px 44px -28px rgba(31, 43, 71, 0.45);
+      overflow: hidden;
     }
 
-    .loader-spinner {
+    .today-page {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      border-right: 3px double var(--rule-strong);
+    }
+
+    .today-scroll {
+      flex: 1;
+      overflow-y: auto;
+      padding: 28px 28px 24px;
+      scrollbar-width: thin;
+      scrollbar-color: var(--rule-strong) transparent;
+    }
+
+    .week-page {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      min-height: 0;
+      padding: 18px 22px 14px 20px;
+    }
+
+    #calendar { flex: 1; min-height: 0; }
+
+    /* ---- Today page ---- */
+    .day-head { margin-bottom: 22px; }
+    .day-weekday { margin: 0; font-size: 14px; font-weight: 600; color: var(--graphite); }
+    .day-date { margin: 2px 0 0; font-size: 32px; line-height: 1.05; font-weight: 800; letter-spacing: -0.025em; }
+
+    .quick-add { display: flex; gap: 8px; align-items: flex-end; }
+    .quick-add input {
+      flex: 1;
+      min-width: 0;
+      padding: 8px 2px 7px;
+      border: 0;
+      border-bottom: 1.5px solid var(--ink);
+      border-radius: 0;
+      background: transparent;
+      color: var(--ink);
+      font: 400 15px/1.3 var(--ui);
+    }
+    .quick-add input::placeholder { color: var(--graphite); }
+    .quick-add input:focus-visible { outline: none; border-bottom-width: 2.5px; padding-bottom: 6px; }
+
+    .notices {
+      list-style: none;
+      margin: 18px 0 0;
+      padding: 2px 0 2px 12px;
+      border-left: 2px solid var(--pen);
+      color: var(--pen);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .notices li + li { margin-top: 6px; }
+
+    .section { margin-top: 26px; padding-top: 18px; border-top: 1px solid var(--rule); }
+    .section-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+    .section-title { margin: 0; font-size: 16px; font-weight: 700; letter-spacing: -0.01em; }
+    .plan-controls { display: flex; gap: 6px; align-items: center; }
+
+    .field-label { display: block; margin: 16px 0 2px; font-size: 13px; font-weight: 600; }
+    .field-help { margin: 6px 0 0; font-size: 12.5px; color: var(--graphite); }
+
+    /* Ruled paper: the lines move with the text as it scrolls. */
+    .lined {
+      display: block;
+      width: 100%;
+      min-height: 76px;
+      padding: 0 2px;
+      border: 0;
+      border-top: 1px solid var(--rule);
+      border-radius: 0;
+      background: transparent repeating-linear-gradient(to bottom, transparent 0, transparent 24px, var(--rule) 24px, var(--rule) 25px);
+      background-attachment: local;
+      color: var(--ink);
+      font: 400 14px/25px var(--ui);
+      resize: vertical;
+    }
+    .lined::placeholder { color: #A3A8B1; }
+    .lined:focus-visible { outline: none; border-top-color: var(--ink); }
+
+    .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
+
+    .btn {
+      appearance: none;
+      padding: 8px 12px;
+      border: 1px solid var(--ink);
+      border-radius: 6px;
+      background: transparent;
+      color: var(--ink);
+      font: 600 13px/1 var(--ui);
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .btn:hover { background: rgba(31, 43, 71, 0.06); }
+    .btn-ink { background: var(--ink); color: var(--paper); }
+    .btn-ink:hover { background: var(--ink-hover); }
+    .btn-quiet { border-color: transparent; padding: 6px 8px; color: var(--graphite); font-weight: 500; }
+    .btn-quiet:hover { color: var(--ink); background: transparent; text-decoration: underline; }
+    .btn:disabled, .quick-add input:disabled { opacity: 0.5; cursor: progress; }
+
+    .select {
+      appearance: none;
+      padding: 7px 26px 7px 10px;
+      border: 1px solid var(--rule-strong);
+      border-radius: 6px;
+      background: transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%231F2B47' stroke-width='1.5'/%3E%3C/svg%3E") no-repeat right 9px center;
+      color: var(--ink);
+      font: 500 13px/1.2 var(--ui);
+      cursor: pointer;
+    }
+    .select-quiet { width: 100%; margin-top: 10px; border-color: transparent; border-bottom-color: var(--rule); border-radius: 0; padding-left: 0; color: var(--graphite); }
+    .select-small { padding: 4px 22px 4px 8px; font-size: 12px; background-position: right 7px center; max-width: 180px; }
+
+    .msg { margin: 8px 0 0; font-size: 12.5px; color: var(--graphite); }
+    .msg.ok { color: var(--ok); }
+    .msg.warn { color: var(--warn); }
+    .msg.error { color: var(--pen); }
+    .msg.busy::before {
+      content: "";
       display: inline-block;
-      width: 16px;
-      height: 16px;
-      border: 3px solid #ddd;
-      border-top: 3px solid #7C4DFF;
+      width: 10px;
+      height: 10px;
+      margin-right: 7px;
+      border: 1.5px solid var(--rule-strong);
+      border-top-color: var(--ink);
       border-radius: 50%;
+      vertical-align: -1px;
       animation: spin 0.8s linear infinite;
-      margin-right: 8px;
-      vertical-align: middle;
+    }
+    .row .msg { margin: 0; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* The plan reads as writing, not interface. */
+    .plan-html { margin-top: 6px; font-family: var(--text); font-size: 15px; line-height: 1.6; color: var(--ink); }
+    .plan-html .plan-html { margin: 0; }
+    .plan-html h1, .plan-html h2, .plan-html h3 {
+      margin: 20px 0 4px;
+      font: 700 13.5px/1.3 var(--ui);
+      color: var(--ink);
+    }
+    .plan-html p { margin: 8px 0; }
+    .plan-html ul { list-style: none; margin: 6px 0 10px; padding: 0; }
+    .plan-html ul li { position: relative; padding-left: 16px; margin: 3px 0; }
+    .plan-html ul li::before { content: "–"; position: absolute; left: 0; color: var(--graphite); }
+    .plan-html ol { margin: 6px 0 10px; padding-left: 22px; }
+    .plan-html ol li::marker { color: var(--graphite); font-family: var(--ui); font-size: 13px; }
+    .plan-html strong { font-weight: 600; }
+    .plan-stream { white-space: pre-wrap; color: var(--graphite); }
+    .plan-note { margin: 10px 0 0; font: 500 12.5px/1.4 var(--ui); color: var(--graphite); }
+
+    .done-box { margin-top: 26px; font-size: 13px; }
+    .done-box summary { cursor: pointer; color: var(--graphite); font-weight: 500; }
+    .done-box ul { list-style: none; margin: 8px 0 0; padding: 0; }
+    .done-box li { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-top: 4px; }
+    .done-title { text-decoration: line-through; text-decoration-color: var(--graphite); color: var(--graphite); }
+    .text-link {
+      appearance: none;
+      padding: 0;
+      border: 0;
+      background: none;
+      color: var(--ink);
+      font: 600 12.5px/1.2 var(--ui);
+      text-decoration: underline;
+      text-underline-offset: 2px;
+      cursor: pointer;
     }
 
-    .loader-text {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      font-weight: 500;
+    .estimates-box li { display: block; color: var(--graphite); }
+
+    /* "How long did it take?" after marking a task done */
+    .duration-prompt { padding: 0 10px 8px; font-size: 12.5px; line-height: 1.4; color: var(--graphite); }
+    .duration-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; color: var(--ink); }
+    .duration-row input {
+      width: 90px;
+      padding: 6px 8px;
+      border: 1px solid var(--rule-strong);
+      border-radius: 6px;
+      background: transparent;
+      color: var(--ink);
+      font: 500 14px/1.2 var(--ui);
     }
-    /* Responsive Layout for Mobile/Tablets */
+
+    /* ---- Status footer (replaces the floating connections box) ---- */
+    .sheet-footer { padding: 12px 28px 14px; border-top: 1px solid var(--rule); font-size: 12px; color: var(--graphite); }
+    .sources { display: flex; flex-wrap: wrap; gap: 4px 11px; }
+    .source { display: inline-flex; align-items: center; gap: 6px; }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--rule-strong); }
+    .dot.ok { background: var(--ok); }
+    .dot.warn { background: var(--warn); }
+    .dot.fail { background: var(--pen); }
+    .footer-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+    .footer-row .text-link { margin-left: auto; font-size: 12px; }
+    .sheet-footer .msg { margin-top: 6px; font-size: 12px; }
+
+    /* ---- Week page: FullCalendar in ink, highlighter, and pencil ---- */
+    /* FullCalendar puts the .fc class on #calendar itself, so its variables are set here. */
+    #calendar {
+      font-family: var(--ui);
+      --fc-border-color: var(--rule);
+      --fc-page-bg-color: var(--paper);
+      --fc-neutral-bg-color: transparent;
+      --fc-today-bg-color: rgba(31, 43, 71, 0.03);
+      --fc-now-indicator-color: var(--pen);
+      --fc-event-bg-color: var(--hl-green);
+      --fc-event-border-color: transparent;
+      --fc-event-text-color: var(--ink);
+      --fc-bg-event-opacity: 1;
+      --fc-small-font-size: 11.5px;
+      --fc-button-text-color: var(--ink);
+      --fc-button-bg-color: transparent;
+      --fc-button-border-color: transparent;
+      --fc-button-hover-bg-color: rgba(31, 43, 71, 0.06);
+      --fc-button-hover-border-color: transparent;
+      --fc-button-active-bg-color: var(--ink);
+      --fc-button-active-border-color: var(--ink);
+    }
+    #calendar a { color: inherit; text-decoration: none; }
+
+    #calendar .fc-header-toolbar { margin-bottom: 12px; }
+    #calendar .fc-toolbar-title { font-size: 24px; font-weight: 800; letter-spacing: -0.025em; }
+    #calendar .fc-toolbar-chunk { display: flex; align-items: center; gap: 4px; }
+    #calendar .fc-button {
+      padding: 7px 10px;
+      border-radius: 6px;
+      box-shadow: none;
+      font: 600 13px/1 var(--ui);
+      text-transform: none;
+    }
+    #calendar .fc-button:focus { box-shadow: none; }
+    #calendar .fc-button:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
+    #calendar .fc-button-primary:not(:disabled).fc-button-active,
+    #calendar .fc-button-primary:not(:disabled):active { color: var(--paper); }
+    #calendar .fc-button:disabled { opacity: 0.35; }
+    #calendar .fc-today-button { margin-right: 6px; border-color: var(--rule-strong); }
+    #calendar .fc-prev-button, #calendar .fc-next-button { padding: 6px 7px; }
+    #calendar .fc-button-group { gap: 2px; }
+    #calendar .fc-button-group > .fc-button { border-radius: 6px; }
+
+    #calendar .fc-scrollgrid { border: 0; }
+    #calendar .fc-col-header-cell { text-align: left; border-left-color: transparent; border-right-color: transparent; border-bottom: 1.5px solid var(--ink); }
+    #calendar .fc-col-header-cell-cushion { display: inline-flex; align-items: baseline; gap: 6px; padding: 6px 6px 8px; }
+    #calendar .dow { font-size: 12.5px; font-weight: 600; color: var(--graphite); }
+    #calendar .dom { font-size: 20px; font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+    #calendar .fc-day-today .dow, #calendar .fc-day-today .dom { color: var(--pen); }
+
+    #calendar .fc-timegrid-slot-label-cushion,
+    #calendar .fc-timegrid-axis-cushion { font-size: 11.5px; color: var(--graphite); font-variant-numeric: tabular-nums; }
+    #calendar .fc-timegrid-slot-label { vertical-align: top; }
+    #calendar .fc-timegrid-slot-label-cushion { padding: 2px 8px 0 0; }
+    #calendar .fc-timegrid-slot { height: 28px; }
+    #calendar .fc-timegrid-slot-minor { border-top-style: dotted; }
+    #calendar .fc-timegrid-now-indicator-line { border-width: 2px 0 0; }
+    #calendar .fc-daygrid-day-number { padding: 6px 8px; font-size: 13px; font-weight: 700; }
+    #calendar .fc-day-today .fc-daygrid-day-number { color: var(--pen); }
+
+    /* Highlighter strokes: multiply lets the ruled lines show through, like ink under a marker. */
+    #calendar .fc-event {
+      border: 0;
+      border-radius: 3px 8px 4px 7px / 7px 4px 8px 3px;
+      background-color: var(--hl-green);
+      box-shadow: none;
+      color: var(--ink);
+      mix-blend-mode: multiply;
+      cursor: default;
+    }
+    #calendar .fc-timegrid-event-harness-inset .fc-timegrid-event,
+    #calendar .fc-timegrid-event.fc-event-mirror { box-shadow: none; }
+    #calendar .fc-event .fc-event-main { color: var(--ink); padding: 3px 6px; }
+    #calendar .fc-event.cat-class { background-color: var(--hl-blue); }
+    #calendar .fc-event.cat-task { background-color: var(--hl-orange); }
+    #calendar .fc-event.cat-event,
+    #calendar .fc-event.cat-personal { background-color: var(--hl-green); }
+    #calendar .fc-event.cat-ask_ai { background-color: var(--hl-pink); cursor: pointer; }
+    #calendar .fc-event.cat-plan { background-color: var(--hl-yellow); }
+    #calendar .fc-event.cat-task { cursor: pointer; }
+
+    /* Pencil: suggested, not added yet. */
+    #calendar .fc-event.suggestion {
+      background: transparent;
+      border: 1.5px dashed var(--graphite);
+      border-radius: 4px;
+      color: var(--graphite);
+      mix-blend-mode: normal;
+      cursor: pointer;
+    }
+    #calendar .fc-event.suggestion .fc-event-main { color: var(--graphite); }
+    #calendar .fc-event.suggestion .ev-title { font-family: var(--text); font-style: italic; font-weight: 400; }
+    #calendar .fc-event.suggestion.kind-deadline { border-color: var(--pen); }
+    #calendar .fc-event.suggestion.kind-deadline .fc-event-main { color: var(--pen); }
+
+    /* Red pen around anything that overlaps. */
+    #calendar .fc-event.has-conflict { outline: 1.5px solid var(--pen); outline-offset: 1px; }
+
+    /* Free time is blank dot-grid paper, waiting to be filled in. */
+    #calendar .fc-bg-event { background: none; }
+    #calendar .fc-bg-event.cat-free_block {
+      background-image: radial-gradient(circle, rgba(31, 43, 71, 0.2) 0.9px, transparent 1.3px);
+      background-size: 12px 12px;
+      background-position: 6px 6px;
+    }
+    #calendar .fc-bg-event .ev,
+    #calendar .fc-bg-event .fc-event-title { display: none; }
+    #calendar .fc-dayGridMonth-view .fc-bg-event { display: none; }
+
+    #calendar .ev { display: flex; flex-direction: column; gap: 1px; overflow: hidden; line-height: 1.25; }
+    #calendar .fc-daygrid-event .ev { flex-direction: row; align-items: baseline; gap: 6px; }
+    #calendar .fc-v-event .fc-event-main { height: 100%; overflow: hidden; }
+    /* Blocks up to 50 minutes keep the title to one line. */
+    #calendar .fc-event.compact .ev-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    /* Blocks under ~35px tall: title only; the position already shows the time. */
+    #calendar .fc-timegrid-event-short .fc-event-main { padding-top: 1px; padding-bottom: 0; }
+    #calendar .fc-timegrid-event-short .ev { flex-direction: row; }
+    #calendar .fc-timegrid-event-short .ev-time { display: none; }
+    #calendar .fc-timegrid-event-short .ev-title { font-size: 11.5px; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #calendar .ev-time { font-size: 11px; font-weight: 500; opacity: 0.75; white-space: nowrap; }
+    #calendar .ev-title { font-size: 12.5px; font-weight: 600; }
+    #calendar .task-box {
+      flex: none;
+      width: 9px;
+      height: 9px;
+      margin-right: 1px;
+      border: 1.5px solid currentColor;
+      border-radius: 2px;
+      align-self: center;
+    }
+
+    /* ---- Legend: what the marks mean ---- */
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px 16px;
+      margin-top: 8px;
+      padding-top: 10px;
+      border-top: 1px solid var(--rule);
+      font-size: 12px;
+      color: var(--graphite);
+    }
+    .legend-item { display: inline-flex; align-items: center; gap: 6px; }
+    .swatch { width: 18px; height: 10px; border-radius: 2px 5px 3px 4px; }
+    .swatch.hl-class { background: var(--hl-blue); }
+    .swatch.hl-event { background: var(--hl-green); }
+    .swatch.hl-task { background: var(--hl-orange); }
+    .swatch.hl-yours { background: var(--hl-pink); }
+    .swatch.hl-plan { background: var(--hl-yellow); }
+    .swatch.pencil { border: 1.5px dashed var(--graphite); border-radius: 3px; }
+    .swatch.free { background-image: radial-gradient(circle, rgba(31, 43, 71, 0.45) 0.8px, transparent 1.2px); background-size: 5px 5px; }
+    .swatch.overlap { background: var(--hl-green); outline: 1.5px solid var(--pen); outline-offset: 1px; }
+
+    /* ---- Tooltip and click menu ---- */
+    .fc-tip {
+      position: absolute;
+      z-index: 1000;
+      display: none;
+      max-width: 340px;
+      padding: 8px 10px;
+      border-radius: 6px;
+      background: var(--ink);
+      color: var(--paper);
+      font: 400 12.5px/1.45 var(--ui);
+      white-space: pre-line;
+      pointer-events: none;
+    }
+
+    .action-menu {
+      position: fixed;
+      z-index: 1001;
+      display: none;
+      min-width: 230px;
+      max-width: 320px;
+      padding: 6px;
+      border: 1px solid var(--rule-strong);
+      border-radius: 8px;
+      background: var(--paper);
+      box-shadow: 0 16px 36px -18px rgba(31, 43, 71, 0.5);
+    }
+    .action-menu .action-title { padding: 8px 10px 6px; font-weight: 700; font-size: 13.5px; }
+    .action-menu button {
+      display: block;
+      width: 100%;
+      padding: 8px 10px;
+      border: 0;
+      border-radius: 5px;
+      background: none;
+      color: var(--ink);
+      font: 500 13px/1.3 var(--ui);
+      text-align: left;
+      cursor: pointer;
+    }
+    .action-menu button:hover { background: rgba(31, 43, 71, 0.06); }
+    .action-menu button.primary { font-weight: 700; }
+    .action-menu button:last-child { color: var(--graphite); }
+
+    @media (prefers-reduced-motion: reduce) {
+      .msg.busy::before { animation: none; }
+    }
+
     @media (max-width: 900px) {
-      .layout { 
-        grid-template-columns: 1fr; 
-        grid-template-rows: auto 1fr;
-      }
-      .sidebar {
-        border-right: none;
-        border-bottom: 1px solid var(--border-color);
-        max-height: 40vh;
-      }
-      .main {
-        height: auto;
-      }
-      .calendar-container {
-        height: 800px; /* Fallback height for scrolling on mobile */
-      }
+      .planner { grid-template-columns: minmax(0, 1fr); height: auto; margin: 0; border: 0; border-radius: 0; box-shadow: none; }
+      .today-page { border-right: 0; border-bottom: 3px double var(--rule-strong); }
+      .today-scroll { overflow: visible; padding: 22px 18px 18px; }
+      .sheet-footer { padding: 12px 18px; }
+      .week-page { height: 88vh; padding: 14px 10px 10px; }
+      #calendar .fc-header-toolbar { flex-wrap: wrap; gap: 8px; }
+      #calendar .fc-toolbar-title { font-size: 20px; }
     }
   </style>
 </head>
 <body>
-  <div class="layout">
-    <aside class="sidebar">
-      <h2>AI Plan</h2>
-      <div style="margin-bottom:12px;">
-        <label style="font-weight:600; display:block; margin-bottom:6px;">Temporary note (one-time)</label>
-        <textarea id="temp-note" rows="3" style="width:100%; padding:8px; border:1px solid var(--border-color); border-radius:6px; resize:vertical; font-family:inherit;"></textarea>
-      </div>
-      <div style="margin-bottom:12px;">
-        <label style="font-weight:600; display:block; margin-bottom:6px;">Permanent note (saved)</label>
-        <textarea id="perm-note" rows="3" style="width:100%; padding:8px; border:1px solid var(--border-color); border-radius:6px; resize:vertical; font-family:inherit;"></textarea>
-        <div style="display:flex; gap:8px; margin-top:8px;">
-          <button id="save-perm" style="padding:6px 10px; border-radius:6px; border:1px solid var(--border-color); background:#fff; cursor:pointer">Save</button>
-          <button id="clear-perm" style="padding:6px 10px; border-radius:6px; border:1px solid var(--border-color); background:#fff; cursor:pointer">Delete</button>
-        </div>
-      </div>
-      <div style="margin-bottom:18px; display:flex; gap:8px; align-items:center;">
-        <button id="ask-ai-btn" style="padding:8px 12px; border-radius:8px; background:#7C4DFF; color:#fff; border:none; cursor:pointer; font-weight:500;">Ask AI</button>
-        <div id="ai-loading" style="display:none; font-size:0.9rem; color:#7C4DFF; font-weight:500;">
-          <span class="loader-spinner"></span>
-          <span>Generating…</span>
-        </div>
-      </div>
-      <div class="plan-html" id="ai-plan-container">{{ ai_plan_html | safe }}</div>
-    </aside>
-    <main class="main">
-      <div class="calendar-container">
-        <div id="calendar"></div>
-      </div>
-    </main>
-  </div>
+  {% macro status_dot(ok, label) %}<span class="source" title="{{ label }}: {{ 'connected' if ok else ('not loaded' if ok is none else 'fetch failed') }}"><span class="dot {{ 'ok' if ok else ('off' if ok is none else 'fail') }}"></span>{{ label }}</span>{% endmacro %}
 
-  <!-- Connection status widget: True = fetched (green), False = fetch failed (red), None = not fetched (grey) -->
-  {% macro status_dot(ok, label) %}
-        <div style="display:flex; gap:6px; align-items:center;" title="{{ label }}: {{ 'connected' if ok else ('not loaded' if ok is none else 'fetch failed') }}">
-          <span style="width:10px; height:10px; border-radius:50%; background: {{ 'green' if ok else ('#9ca3af' if ok is none else '#ef4444') }};"></span>
-          <span>{{ label }}</span>
-        </div>
-  {% endmacro %}
-  <div id="connection-status" style="position:fixed; top:12px; right:12px; z-index:99999; font-family: Inter, system-ui, -apple-system, sans-serif;">
-    <div style="background: rgba(255,255,255,0.9); border:1px solid #e5e7eb; padding:8px 12px; border-radius:8px; box-shadow:0 6px 18px rgba(0,0,0,0.06);">
-      <div style="font-size:12px; font-weight:600; color:#111827; margin-bottom:6px">Connections</div>
-      <div style="display:flex; gap:10px; align-items:center; font-size:12px; color:#374151;">
-        {{ status_dot(calendar_ok, 'Calendar') }}
-        {{ status_dot(tasks_ok, 'Tasks') }}
-        {{ status_dot(gmail_ok, 'Gmail') }}
+  <div class="planner">
+    <aside class="today-page">
+      <div class="today-scroll">
+        <header class="day-head">
+          <p class="day-weekday" id="today-weekday"></p>
+          <h1 class="day-date" id="today-date"></h1>
+        </header>
+
+        {% if live %}
+        <form id="quick-add" class="quick-add" autocomplete="off">
+          <input id="quick-add-input" type="text" aria-label="Add an event" placeholder="e.g. gym tomorrow 5pm">
+          <button type="submit" class="btn btn-ink">Add</button>
+        </form>
+        <p id="quick-add-status" class="msg" aria-live="polite" hidden></p>
+        {% endif %}
+
+        <ul id="notices" class="notices"{% if not notices %} hidden{% endif %}>{% for notice in notices or [] %}<li>{{ notice | e }}</li>{% endfor %}</ul>
+
+        <section class="section">
+          <div class="section-head">
+            <h2 class="section-title">Plan</h2>
+            {% if live %}
+            <div class="plan-controls">
+              <select id="plan-mode" class="select" aria-label="What to plan">
+                <option value="daily">Today</option>
+                <option value="weekly">This week</option>
+                <option value="all">Both</option>
+              </select>
+              <button id="plan-btn" class="btn btn-ink" type="button">Generate plan</button>
+            </div>
+            {% endif %}
+          </div>
+          {% if live %}
+          <select id="plan-history" class="select select-quiet" aria-label="Earlier plans">
+            <option value="">Earlier plans</option>
+          </select>
+          <p id="plan-status" class="msg" aria-live="polite" hidden></p>
+          {% endif %}
+          <div class="plan-html" id="ai-plan-container">{{ ai_plan_html | safe }}</div>
+        </section>
+
+        <section class="section">
+          <h2 class="section-title">Notes</h2>
+          <label class="field-label" for="temp-note">Note</label>
+          <textarea id="temp-note" class="lined" rows="3" placeholder="dentist Thursday afternoon, call home this weekend"></textarea>
+          <label class="field-label" for="perm-note">Standing note</label>
+          <textarea id="perm-note" class="lined" rows="3" placeholder="I go to the gym most days around 5pm"></textarea>
+          <p class="field-help">Saved in this browser and used whenever you add notes or generate a plan.</p>
+          <div class="row">
+            <button id="save-perm" class="btn btn-quiet" type="button">Save standing note</button>
+            <button id="clear-perm" class="btn btn-quiet" type="button">Clear</button>
+          </div>
+          <div class="row">
+            <button id="ask-ai-btn" class="btn" type="button">Add notes to calendar</button>
+            <p id="ai-loading" class="msg" aria-live="polite" hidden></p>
+          </div>
+        </section>
+
+        {% if live %}
+        <details id="done-box" class="done-box"{% if not done_tasks %} hidden{% endif %}>
+          <summary>Marked done (<span id="done-count">{{ (done_tasks or []) | length }}</span>)</summary>
+          <ul id="done-list">{% for entry in done_tasks or [] %}<li><span class="done-title">{{ entry.title | e }}</span><button type="button" class="text-link undo-done" data-key="{{ entry.key | e }}">Undo</button></li>{% endfor %}</ul>
+        </details>
+        <details id="estimates-box" class="done-box estimates-box"{% if not estimate_notes %} hidden{% endif %}>
+          <summary>How long things take</summary>
+          <ul id="estimates-list">{% for line in estimate_notes or [] %}<li>{{ line | e }}</li>{% endfor %}</ul>
+        </details>
+        {% endif %}
       </div>
-    </div>
+
+      <footer class="sheet-footer">
+        <div class="sources">
+          {{ status_dot(calendar_ok, 'Calendar') }}
+          {{ status_dot(tasks_ok, 'Tasks') }}
+          {{ status_dot(gmail_ok, 'Gmail') }}
+          {% if feeds_ok is defined and feeds_ok is not none %}{{ status_dot(feeds_ok, 'Feeds') }}{% endif %}
+          {% if live %}<span id="ollama-status" class="source" title="Ollama: checking…"><span id="ollama-dot" class="dot off"></span>Ollama</span>{% endif %}
+        </div>
+        {% if live %}
+        <div class="footer-row">
+          <label for="model-select">Model</label>
+          <select id="model-select" class="select select-small"></select>
+          <a class="text-link" href="/?refresh=1" title="Fetch fresh data from Google">Refresh</a>
+        </div>
+        <p id="scan-status" class="msg" aria-live="polite" hidden></p>
+        {% endif %}
+      </footer>
+    </aside>
+
+    <main class="week-page">
+      <div id="calendar"></div>
+      <footer class="legend">
+        <span class="legend-item"><span class="swatch hl-class" aria-hidden="true"></span>Class</span>
+        <span class="legend-item"><span class="swatch hl-event" aria-hidden="true"></span>Event</span>
+        <span class="legend-item"><span class="swatch hl-task" aria-hidden="true"></span>Task</span>
+        <span class="legend-item"><span class="swatch hl-yours" aria-hidden="true"></span>Added by you</span>
+        <span class="legend-item"><span class="swatch hl-plan" aria-hidden="true"></span>Plan</span>
+        <span class="legend-item"><span class="swatch pencil" aria-hidden="true"></span>Suggested</span>
+        <span class="legend-item"><span class="swatch free" aria-hidden="true"></span>Free time</span>
+        <span class="legend-item"><span class="swatch overlap" aria-hidden="true"></span>Overlap</span>
+      </footer>
+    </main>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
   <script>
     const rawEvents = {{ events_json | safe }};
     const events = Array.isArray(rawEvents) ? rawEvents : [];
+    // True when served by server.py: live data, saving and deleting events, suggestions, Generate plan.
+    const LIVE = {{ 'true' if live else 'false' }};
+    const DEFAULT_MODEL = {{ ollama_model | tojson }};
+    const MODE_LABELS = { daily: 'Today', weekly: 'This week', all: 'Both' };
+
+    // Colors come from CSS classes (category and kind), not from the event data.
+    function prepareEvents(list) {
+      return (Array.isArray(list) ? list : []).map(function (event) {
+        const { color, backgroundColor, borderColor, textColor, ...rest } = event;
+        return rest;
+      });
+    }
+
+    function showMessage(el, text, kind, hideAfterMs) {
+      if (!el) return;
+      clearTimeout(el._hideTimer);
+      el.textContent = text || '';
+      el.className = 'msg' + (kind ? ' ' + kind : '');
+      el.hidden = !text;
+      if (text && hideAfterMs) {
+        el._hideTimer = setTimeout(function () { el.hidden = true; el.textContent = ''; }, hideAfterMs);
+      }
+    }
+
+    function describeEvent(ev) {
+      const day = new Date(`${ev.date}T00:00:00`).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+      if (ev.all_day) return `${day}, all day`;
+      const time = (clock) => new Date(`${ev.date}T${clock}:00`).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+      return `${day}, ${time(ev.start)} to ${time(ev.end)}`;
+    }
 
     document.addEventListener('DOMContentLoaded', function () {
+      const now = new Date();
+      document.getElementById('today-weekday').textContent = now.toLocaleDateString(undefined, { weekday: 'long' });
+      document.getElementById('today-date').textContent = now.toLocaleDateString(undefined, { month: 'long', day: 'numeric' });
+
       const calendarEl = document.getElementById('calendar');
-      // create a simple tooltip element for event hover
-      let fcTooltip = document.getElementById('fc-tooltip');
-      if (!fcTooltip) {
-        fcTooltip = document.createElement('div');
-        fcTooltip.id = 'fc-tooltip';
-        Object.assign(fcTooltip.style, {
-          position: 'absolute',
-          display: 'none',
-          padding: '8px 10px',
-          background: 'rgba(17,24,39,0.95)',
-          color: '#fff',
-          borderRadius: '6px',
-          fontSize: '0.9rem',
-          maxWidth: '420px',
-          zIndex: 99999,
-          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-          pointerEvents: 'none',
-          whiteSpace: 'normal',
+
+      // Hover tooltip for events.
+      const fcTooltip = document.createElement('div');
+      fcTooltip.className = 'fc-tip';
+      document.body.appendChild(fcTooltip);
+
+      // Small popup menu for clicking saved events, tasks, and suggestions.
+      const actionMenu = document.createElement('div');
+      actionMenu.className = 'action-menu';
+      document.body.appendChild(actionMenu);
+
+      function hideActions() {
+        actionMenu.style.display = 'none';
+      }
+
+      function showActions(jsEvent, heading, actions, options) {
+        const { body = null, cancelLabel = 'Cancel' } = options || {};
+        actionMenu.innerHTML = '';
+        const title = document.createElement('div');
+        title.className = 'action-title';
+        title.textContent = heading;
+        actionMenu.appendChild(title);
+        if (body) actionMenu.appendChild(body);
+        actions.concat([{ label: cancelLabel, run: function () {} }]).forEach(function (action) {
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.textContent = action.label;
+          if (action.primary) button.className = 'primary';
+          button.addEventListener('click', function () {
+            hideActions();
+            action.run();
+          });
+          actionMenu.appendChild(button);
         });
-        document.body.appendChild(fcTooltip);
+        actionMenu.style.display = 'block';
+        const left = Math.min(jsEvent.clientX, window.innerWidth - actionMenu.offsetWidth - 12);
+        const top = Math.min(jsEvent.clientY, window.innerHeight - actionMenu.offsetHeight - 12);
+        actionMenu.style.left = Math.max(12, left) + 'px';
+        actionMenu.style.top = Math.max(12, top) + 'px';
+        const first = actionMenu.querySelector('input, button');
+        if (first) first.focus();
+      }
+
+      document.addEventListener('mousedown', function (ev) {
+        if (!actionMenu.contains(ev.target)) hideActions();
+      });
+      document.addEventListener('keydown', function (ev) {
+        if (ev.key === 'Escape') hideActions();
+      });
+
+      async function postJson(url, body) {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body || {}),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+        return data;
       }
 
       const calendar = new FullCalendar.Calendar(calendarEl, {
-        initialView: 'timeGridWeek',
+        // A week of columns is unreadable on a phone, so small screens start on one day.
+        initialView: window.matchMedia('(max-width: 700px)').matches ? 'timeGridDay' : 'timeGridWeek',
         initialDate: new Date(),
         timeZone: 'local',
         headerToolbar: {
-          left: 'prev,next today',
-          center: 'title',
-          right: 'timeGridWeek,dayGridMonth'
+          left: 'title',
+          center: '',
+          right: 'today prev,next timeGridDay,timeGridWeek,dayGridMonth'
         },
-        events: events,
+        buttonText: { today: 'Today', day: 'Day', week: 'Week', month: 'Month' },
+        titleFormat: { year: 'numeric', month: 'long' },
+        dayHeaderContent: function (arg) {
+          // Month headers get a placeholder date, not a real day, so use FullCalendar's own label there.
+          if (arg.view.type === 'dayGridMonth') return arg.text;
+          const weekday = arg.date.toLocaleDateString(undefined, { weekday: 'short' });
+          return { html: `<span class="dow">${weekday}</span><span class="dom">${arg.date.getDate()}</span>` };
+        },
+        slotLabelFormat: { hour: 'numeric', meridiem: 'short' },
+        eventTimeFormat: { hour: 'numeric', minute: '2-digit', omitZeroMinute: true, meridiem: 'short' },
+        allDayText: 'All day',
+        events: prepareEvents(events),
         eventDisplay: 'block',
         editable: false,
-        dayMaxEvents: false,
+        dayMaxEvents: 4,
         allDaySlot: true,
+        nowIndicator: true,
+        snapDuration: '00:15:00',
         slotMinTime: '06:00:00',
         slotMaxTime: '23:00:00',
-        scrollTime: '08:00:00',
-        expandRows: true,
+        // Rows keep a readable height (see .fc-timegrid-slot) and the grid scrolls, opening an hour before now.
+        scrollTime: `${String(Math.max(7, new Date().getHours() - 1)).padStart(2, '0')}:00:00`,
+        expandRows: false,
+        eventShortHeight: 34,
+        slotEventOverlap: false,
         height: '100%',
-        eventDidMount: function(info) {
+        eventClassNames: function (arg) {
+          const props = arg.event.extendedProps || {};
+          const classes = ['cat-' + (props.category || 'event')];
+          if (props.suggestion && props.suggestion.kind) classes.push('kind-' + props.suggestion.kind);
+          const { start, end, allDay } = arg.event;
+          if (!allDay && start && end && end - start <= 50 * 60 * 1000) classes.push('compact');
+          return classes;
+        },
+        eventContent: function (arg) {
+          const props = arg.event.extendedProps || {};
+          const wrap = document.createElement('div');
+          wrap.className = 'ev';
+          if (props.source === 'task') {
+            const box = document.createElement('span');
+            box.className = 'task-box';
+            box.setAttribute('aria-hidden', 'true');
+            wrap.appendChild(box);
+          }
+          if (arg.timeText && !arg.event.allDay) {
+            const time = document.createElement('span');
+            time.className = 'ev-time';
+            time.textContent = arg.timeText;
+            wrap.appendChild(time);
+          }
+          const title = document.createElement('span');
+          title.className = 'ev-title';
+          title.textContent = props.source === 'task' ? arg.event.title.replace(/^Task:\s*/, '') : arg.event.title;
+          wrap.appendChild(title);
+          return { domNodes: [wrap] };
+        },
+        eventDrop: function (info) { saveNewTiming(info); },
+        eventResize: function (info) { saveNewTiming(info); },
+        eventClick: function (info) {
+          if (!LIVE) return;
+          const props = info.event.extendedProps || {};
+          if (props.source === 'ask_ai' && props.id) {
+            const siblings = calendar.getEvents().filter(e => props.batch && e.extendedProps.batch === props.batch);
+            const actions = [{ label: 'Delete this event', primary: true, run: () => deleteSaved(props.id, false) }];
+            if (siblings.length > 1) {
+              actions.push({ label: `Delete all ${siblings.length} from the same note`, run: () => deleteSaved(props.id, true) });
+            }
+            showActions(info.jsEvent, info.event.title, actions);
+          } else if (props.source === 'task' && props.key) {
+            const title = props.task_title || info.event.title;
+            showActions(info.jsEvent, title, [
+              { label: 'Mark done', primary: true, run: () => markTaskDone(props.key, title, info.jsEvent) },
+              { label: 'Stop suggesting time for this task', run: () => dismissSuggestion(`study:${props.key}`) },
+            ]);
+          } else if (props.source === 'suggestion' && props.suggestion) {
+            const item = props.suggestion;
+            showActions(info.jsEvent, info.event.title, [
+              { label: 'Add to calendar', primary: true, run: () => acceptSuggestion(item) },
+              {
+                label: item.kind === 'study' ? 'Stop suggesting time for this task' : 'Dismiss',
+                run: () => dismissSuggestion(item.ref),
+              },
+            ]);
+          }
+        },
+        eventDidMount: function (info) {
           const el = info.el;
-          const event = info.event;
-          const details = (event.extendedProps && event.extendedProps.details) ? ("\n" + event.extendedProps.details) : '';
-          const tooltipText = event.title + details;
+          const props = info.event.extendedProps || {};
+          if (info.event.display === 'background') return;
+          const tooltipText = info.event.title
+            + (props.details ? '\n' + props.details : '')
+            + (props.conflict ? '\nOverlaps another event.' : '')
+            + (LIVE && props.source === 'task' ? '\nClick to mark it done.' : '');
 
           function onMouseMove(ev) {
-            fcTooltip.style.left = (ev.pageX + 12) + 'px';
-            fcTooltip.style.top = (ev.pageY + 12) + 'px';
+            fcTooltip.style.left = (ev.pageX + 14) + 'px';
+            fcTooltip.style.top = (ev.pageY + 14) + 'px';
           }
 
           function onEnter(ev) {
@@ -269,7 +810,8 @@
           el.addEventListener('mouseleave', onLeave);
           el.__fcTooltipHandlers = { onEnter, onLeave, onMouseMove };
         },
-        eventWillUnmount: function(info) {
+        eventWillUnmount: function (info) {
+          fcTooltip.style.display = 'none';  // a removed event never fires mouseleave
           const el = info.el;
           const h = el.__fcTooltipHandlers;
           if (h) {
@@ -281,9 +823,302 @@
         }
       });
       calendar.render();
-      
-      // --- Planner UI: permanent/temp notes and client-side AI request ---
-      const OLLAMA_MODEL = "{{ ollama_model }}";
+
+      // --- Keeping the calendar in sync with the server (server.py only) ---
+      function renderNotices(notices) {
+        const list = document.getElementById('notices');
+        list.innerHTML = '';
+        notices.forEach(function (text) {
+          const item = document.createElement('li');
+          item.textContent = text;
+          list.appendChild(item);
+        });
+        list.hidden = notices.length === 0;
+      }
+
+      async function refreshCalendar() {
+        if (!LIVE) return;
+        try {
+          const res = await fetch('/api/events');
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const data = await res.json();
+          calendar.getEventSources().forEach(source => source.remove());
+          calendar.getEvents().forEach(event => event.remove());
+          calendar.addEventSource(prepareEvents(data.events));
+          renderNotices(Array.isArray(data.notices) ? data.notices : []);
+          renderDone(Array.isArray(data.done) ? data.done : []);
+          renderEstimates(Array.isArray(data.estimates) ? data.estimates : []);
+        } catch (err) {
+          console.error('Calendar refresh failed:', err);
+        }
+      }
+
+      async function deleteSaved(id, wholeBatch) {
+        try {
+          const res = await fetch(`/events/${encodeURIComponent(id)}${wholeBatch ? '?batch=1' : ''}`, { method: 'DELETE' });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        } catch (err) {
+          console.error('Delete failed:', err);
+          alert("Couldn't delete the event. Refresh the page and try again.");
+        }
+        await refreshCalendar();
+      }
+
+      async function acceptSuggestion(item) {
+        try {
+          await postJson('/suggestions/accept', { suggestion: item });
+        } catch (err) {
+          console.error('Accept failed:', err);
+          alert(`Couldn't add it: ${err.message}`);
+        }
+        await refreshCalendar();
+      }
+
+      async function dismissSuggestion(ref) {
+        try {
+          await postJson('/suggestions/dismiss', { ref });
+        } catch (err) {
+          console.error('Dismiss failed:', err);
+        }
+        await refreshCalendar();
+      }
+
+      // --- Drag and drop: saved events move; dragging a suggestion adds it at the new time ---
+      function pad(n) { return String(n).padStart(2, '0'); }
+      function isoDate(d) { return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; }
+      function clockText(d) { return `${pad(d.getHours())}:${pad(d.getMinutes())}`; }
+
+      function timingOf(event) {
+        if (event.allDay) return { date: isoDate(event.start), start: '', end: '', all_day: true };
+        const end = event.end || new Date(event.start.getTime() + 60 * 60 * 1000);
+        return { date: isoDate(event.start), start: clockText(event.start), end: clockText(end), all_day: false };
+      }
+
+      async function saveNewTiming(info) {
+        const props = info.event.extendedProps || {};
+        const timing = timingOf(info.event);
+        try {
+          if (props.source === 'ask_ai' && props.id) {
+            const res = await fetch(`/events/${encodeURIComponent(props.id)}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(timing),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+          } else if (props.source === 'suggestion' && props.suggestion) {
+            await postJson('/suggestions/accept', { suggestion: Object.assign({}, props.suggestion, timing) });
+          } else {
+            info.revert();
+            return;
+          }
+        } catch (err) {
+          info.revert();
+          alert(`Couldn't move it: ${err.message}`);
+          return;
+        }
+        await refreshCalendar();
+      }
+
+      // --- Tasks marked done (hidden in the planner; Google Tasks is unchanged) ---
+      function renderDone(entries) {
+        const box = document.getElementById('done-box');
+        const list = document.getElementById('done-list');
+        if (!box || !list) return;
+        list.innerHTML = '';
+        entries.forEach(function (entry) {
+          const item = document.createElement('li');
+          const title = document.createElement('span');
+          title.className = 'done-title';
+          title.textContent = entry.title;
+          const undo = document.createElement('button');
+          undo.type = 'button';
+          undo.className = 'text-link undo-done';
+          undo.dataset.key = entry.key;
+          undo.textContent = 'Undo';
+          item.append(title, undo);
+          list.appendChild(item);
+        });
+        document.getElementById('done-count').textContent = entries.length;
+        box.hidden = entries.length === 0;
+      }
+
+      function renderEstimates(lines) {
+        const box = document.getElementById('estimates-box');
+        const list = document.getElementById('estimates-list');
+        if (!box || !list) return;
+        list.innerHTML = '';
+        lines.forEach(function (text) {
+          const item = document.createElement('li');
+          item.textContent = text;
+          list.appendChild(item);
+        });
+        box.hidden = lines.length === 0;
+      }
+
+      function formatMinutes(minutes) {
+        const hours = Math.floor(minutes / 60);
+        const rest = minutes % 60;
+        if (hours && rest) return `${hours} h ${rest} min`;
+        return hours ? `${hours} h` : `${rest} min`;
+      }
+
+      async function markTaskDone(key, title, jsEvent) {
+        let data;
+        try {
+          data = await postJson('/tasks/done', { key, title });
+        } catch (err) {
+          console.error('Mark done failed:', err);
+          alert(`Couldn't mark it done: ${err.message}`);
+          await refreshCalendar();
+          return;
+        }
+        await refreshCalendar();
+        if (jsEvent) askHowLong(key, title, data, jsEvent);
+      }
+
+      // The real time spent is what teaches future estimates; the sessions added for the task are the starting guess.
+      function askHowLong(key, title, data, jsEvent) {
+        const body = document.createElement('div');
+        body.className = 'duration-prompt';
+        const label = document.createElement('label');
+        label.htmlFor = 'duration-input';
+        label.textContent = data.actual_minutes
+          ? `Your study sessions for it add up to ${formatMinutes(data.actual_minutes)}. Change it if it took more or less.`
+          : 'How long did it take? Future estimates learn from this.';
+        const row = document.createElement('div');
+        row.className = 'duration-row';
+        const input = document.createElement('input');
+        input.id = 'duration-input';
+        input.type = 'number';
+        input.min = '5';
+        input.max = '1440';
+        input.step = '5';
+        input.value = String(data.actual_minutes || data.estimate_minutes || 60);
+        const unit = document.createElement('span');
+        unit.textContent = 'minutes';
+        row.append(input, unit);
+        body.append(label, row);
+        input.addEventListener('keydown', function (ev) {
+          if (ev.key !== 'Enter') return;
+          hideActions();
+          saveTimeSpent(key, input.value);
+        });
+        showActions(jsEvent, `Done: ${title}`, [
+          { label: 'Save time', primary: true, run: () => saveTimeSpent(key, input.value) },
+        ], { body, cancelLabel: 'Skip' });
+      }
+
+      async function saveTimeSpent(key, value) {
+        try {
+          await postJson('/tasks/time', { key, minutes: Number(value) });
+        } catch (err) {
+          console.error('Saving the time failed:', err);
+          alert(`Couldn't save the time: ${err.message}`);
+        }
+        await refreshCalendar();
+      }
+
+      const doneList = document.getElementById('done-list');
+      if (doneList) {
+        doneList.addEventListener('click', async function (ev) {
+          const button = ev.target.closest('.undo-done');
+          if (!button) return;
+          try {
+            await postJson('/tasks/undo', { key: button.dataset.key });
+          } catch (err) {
+            console.error('Undo failed:', err);
+          }
+          await refreshCalendar();
+        });
+      }
+
+      // --- Ollama status dot and model picker (server.py only) ---
+      const modelSelect = document.getElementById('model-select');
+      let ollamaRunning = false;
+      let ollamaModels = [];
+      let emailScanStarted = false;
+
+      function currentModel() {
+        return (modelSelect && modelSelect.value) || DEFAULT_MODEL;
+      }
+
+      function storedModel() {
+        try { return localStorage.getItem('planner_model') || ''; } catch (e) { return ''; }
+      }
+
+      function updateOllamaDot() {
+        const dot = document.getElementById('ollama-dot');
+        const box = document.getElementById('ollama-status');
+        if (!dot || !box) return;
+        const model = currentModel();
+        if (!ollamaRunning) {
+          dot.className = 'dot fail';
+          box.title = 'Ollama: not running. Start it with: ollama serve';
+        } else if (!ollamaModels.includes(model)) {
+          dot.className = 'dot warn';
+          box.title = `Ollama: running, but ${model} isn't downloaded. Run: ollama pull ${model}`;
+        } else {
+          dot.className = 'dot ok';
+          box.title = `Ollama: running with ${model}`;
+        }
+      }
+
+      async function checkOllama() {
+        let status = { running: false, models: [], default: DEFAULT_MODEL };
+        try {
+          const res = await fetch('/ollama/status');
+          if (res.ok) status = await res.json();
+        } catch (e) { }
+        ollamaRunning = Boolean(status.running);
+        ollamaModels = Array.isArray(status.models) ? status.models : [];
+
+        const selected = modelSelect.value || storedModel() || status.default || DEFAULT_MODEL;
+        const names = ollamaModels.includes(selected) ? ollamaModels.slice() : [selected].concat(ollamaModels);
+        modelSelect.innerHTML = '';
+        names.forEach(function (name) {
+          const option = document.createElement('option');
+          option.value = name;
+          option.textContent = ollamaRunning && !ollamaModels.includes(name) ? `${name} (not downloaded)` : name;
+          modelSelect.appendChild(option);
+        });
+        modelSelect.value = selected;
+        updateOllamaDot();
+
+        if (ollamaRunning && !emailScanStarted) {
+          emailScanStarted = true;
+          scanEmails();
+        }
+      }
+
+      async function scanEmails() {
+        const scanStatus = document.getElementById('scan-status');
+        showMessage(scanStatus, 'Checking unread email for deadlines…', 'busy');
+        try {
+          const data = await postJson('/suggestions/scan-emails', { model: currentModel() });
+          if (data.scanned > 0) {
+            showMessage(scanStatus, `Checked ${data.scanned} email${data.scanned !== 1 ? 's' : ''} for deadlines.`, '', 5000);
+            await refreshCalendar();
+          } else {
+            showMessage(scanStatus, '');
+          }
+        } catch (err) {
+          showMessage(scanStatus, '');
+          console.error('Email scan failed:', err);
+        }
+      }
+
+      if (LIVE && modelSelect) {
+        modelSelect.addEventListener('change', function () {
+          try { localStorage.setItem('planner_model', modelSelect.value); } catch (e) { }
+          updateOllamaDot();
+        });
+        checkOllama();
+        setInterval(checkOllama, 30000);
+      }
+
+      // --- Notes ---
+      const notesStatus = document.getElementById('ai-loading');
 
       function loadPermanentNote() {
         try {
@@ -310,72 +1145,197 @@
 
       document.getElementById('save-perm').addEventListener('click', function () {
         savePermanentNote();
-        const el = document.getElementById('ai-loading');
-        el.style.display = 'inline-block';
-        el.textContent = 'Saved';
-        setTimeout(() => el.style.display = 'none', 800);
+        showMessage(notesStatus, 'Standing note saved.', 'ok', 1800);
       });
 
       document.getElementById('clear-perm').addEventListener('click', function () {
-        if (!confirm('Delete the permanent note?')) return;
+        if (!confirm('Clear the standing note?')) return;
         clearPermanentNote();
       });
 
+      // --- Add notes to calendar (Ask AI): notes -> saved calendar events ---
       document.getElementById('ask-ai-btn').addEventListener('click', async function () {
         const btn = document.getElementById('ask-ai-btn');
-        const loading = document.getElementById('ai-loading');
         const temp = document.getElementById('temp-note').value || '';
         const perm = document.getElementById('perm-note').value || '';
 
         const prompt = `Permanent note:\n${perm}\n\nTemporary note:\n${temp}`;
 
         btn.disabled = true;
-        // Reset the indicator; earlier "Saved"/"Added N events" messages replace its contents.
-        loading.innerHTML = '<span class="loader-spinner"></span><span>Generating…</span>';
-        loading.style.display = 'inline-flex';
+        showMessage(notesStatus, 'Reading your notes…', 'busy');
 
         try {
           const res = await fetch('/generate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ model: OLLAMA_MODEL, prompt }),
+            body: JSON.stringify({ model: currentModel(), prompt }),
           });
           const data = await res.json();
           if (data.error) throw new Error(data.error);
 
-          const events = Array.isArray(data.events) ? data.events : [];
-          let addedCount = 0;
-          events.forEach(function (ev) {
-            if (!ev.date || !ev.start || !ev.end || !ev.title) return;
-            calendar.addEvent({
-              title: ev.title,
-              start: `${ev.date}T${ev.start}:00`,
-              end: `${ev.date}T${ev.end}:00`,
-              color: '#7C4DFF',
-              extendedProps: { source: 'ai_plan' }
-            });
-            addedCount++;
-          });
+          // The server has already validated and saved these; refreshing draws them (and any new conflicts).
+          const addedCount = Array.isArray(data.events) ? data.events.length : 0;
+          await refreshCalendar();
 
           if (addedCount > 0) {
-            loading.innerHTML = `<span style="color:#10b981;">Added ${addedCount} event${addedCount !== 1 ? 's' : ''}</span>`;
-            setTimeout(() => loading.style.display = 'none', 1500);
+            showMessage(notesStatus, `Added ${addedCount} event${addedCount !== 1 ? 's' : ''}.`, 'ok', 2500);
+          } else if (data.skipped > 0) {
+            showMessage(notesStatus, 'Nothing new. Those are already on the calendar, or the times didn’t work.', 'warn', 4000);
           } else {
-            loading.innerHTML = '<span style="color:#f59e0b;">No events scheduled — try being more specific</span>';
-            setTimeout(() => loading.style.display = 'none', 2200);
+            showMessage(notesStatus, 'No events found. Add a day or a time to the note.', 'warn', 4000);
           }
 
           document.getElementById('temp-note').value = '';
         } catch (err) {
           // /generate only exists when the page is served by server.py, not opened as a file.
-          const message = location.protocol === 'file:' ? 'Ask AI needs server.py running' : 'Error';
-          loading.innerHTML = `<span style="color:#ef4444;">${message}</span>`;
-          setTimeout(() => loading.style.display = 'none', 2500);
+          const message = location.protocol === 'file:'
+            ? 'This needs the planner app. Start it with run_server.bat.'
+            : `Couldn't add your notes: ${err.message}`;
+          showMessage(notesStatus, message, 'error');
           console.error('AI request error:', err);
         } finally {
           btn.disabled = false;
         }
       });
+
+      // --- Quick add: one event from a short line of text (server.py only) ---
+      const quickAddForm = document.getElementById('quick-add');
+      if (quickAddForm) {
+        quickAddForm.addEventListener('submit', async function (ev) {
+          ev.preventDefault();
+          const input = document.getElementById('quick-add-input');
+          const quickStatus = document.getElementById('quick-add-status');
+          const text = input.value.trim();
+          if (!text) return;
+          input.disabled = true;
+          showMessage(quickStatus, 'Adding…', 'busy');
+          try {
+            const data = await postJson('/quick-add', { text, model: currentModel() });
+            const added = Array.isArray(data.events) ? data.events : [];
+            if (added.length === 0) {
+              showMessage(quickStatus, 'Nothing new. It’s already on the calendar, or no date or time was found.', 'warn', 5000);
+            } else {
+              const first = added[0];
+              showMessage(quickStatus, added.length === 1
+                ? `Added “${first.title}”, ${describeEvent(first)}.`
+                : `Added ${added.length} events.`, 'ok', 6000);
+              input.value = '';
+              calendar.gotoDate(first.date);
+            }
+            await refreshCalendar();
+          } catch (err) {
+            showMessage(quickStatus, err.message, 'error');
+          } finally {
+            input.disabled = false;
+            input.focus();
+          }
+        });
+      }
+
+      // --- Plan history (server.py only) ---
+      const historySelect = document.getElementById('plan-history');
+
+      async function loadHistory() {
+        if (!historySelect) return;
+        try {
+          const res = await fetch('/plans');
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const data = await res.json();
+          historySelect.innerHTML = '<option value="">Earlier plans</option>';
+          (data.plans || []).forEach(function (plan) {
+            const created = new Date(plan.created);
+            const option = document.createElement('option');
+            option.value = plan.id;
+            option.textContent = `${created.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}, `
+              + `${created.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} (${MODE_LABELS[plan.mode] || plan.mode})`;
+            historySelect.appendChild(option);
+          });
+        } catch (err) {
+          console.error('Could not load plan history:', err);
+        }
+      }
+
+      if (historySelect) {
+        historySelect.addEventListener('change', async function () {
+          if (!historySelect.value) return;
+          try {
+            const res = await fetch(`/plans/${encodeURIComponent(historySelect.value)}`);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const plan = await res.json();
+            const container = document.getElementById('ai-plan-container');
+            container.innerHTML = plan.html;  // sanitized server-side by format_ai_output
+            const label = document.createElement('p');
+            label.className = 'plan-note';
+            label.textContent = `Earlier plan from ${historySelect.selectedOptions[0].textContent}`;
+            container.prepend(label);
+          } catch (err) {
+            console.error('Could not load plan:', err);
+          }
+        });
+        loadHistory();
+      }
+
+      // --- Generate plan (server.py only): stream the plan, then refresh the calendar ---
+      const planBtn = document.getElementById('plan-btn');
+      if (planBtn) {
+        planBtn.addEventListener('click', async function () {
+          const planStatus = document.getElementById('plan-status');
+          const container = document.getElementById('ai-plan-container');
+          const mode = document.getElementById('plan-mode').value;
+          const note = document.getElementById('perm-note').value || '';
+
+          planBtn.disabled = true;
+          showMessage(planStatus, 'Writing your plan…', 'busy');
+          container.innerHTML = '';
+          const liveText = document.createElement('div');
+          liveText.className = 'plan-stream';
+          container.appendChild(liveText);
+
+          try {
+            const res = await fetch('/plan', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ mode, note, model: currentModel() }),
+            });
+            if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+            let finished = false;
+            while (true) {
+              const { value, done } = await reader.read();
+              if (done) break;
+              buffer += decoder.decode(value, { stream: true });
+              let newline;
+              while ((newline = buffer.indexOf('\n')) >= 0) {
+                const line = buffer.slice(0, newline).trim();
+                buffer = buffer.slice(newline + 1);
+                if (!line) continue;
+                const msg = JSON.parse(line);
+                if (msg.error) throw new Error(msg.error);
+                if (msg.token) liveText.textContent += msg.token;
+                if (msg.done) {
+                  finished = true;
+                  container.innerHTML = msg.html;  // sanitized server-side by format_ai_output
+                  const blocks = Array.isArray(msg.events) ? msg.events.length : 0;
+                  showMessage(planStatus, blocks
+                    ? `Plan ready. ${blocks} time block${blocks !== 1 ? 's' : ''} added to the calendar.`
+                    : 'Plan ready.', 'ok', 8000);
+                  await refreshCalendar();
+                  loadHistory();
+                }
+              }
+            }
+            if (!finished) throw new Error('the plan stopped before it finished');
+          } catch (err) {
+            showMessage(planStatus, `Couldn't write the plan: ${err.message}`, 'error');
+            console.error('Plan request error:', err);
+          } finally {
+            planBtn.disabled = false;
+          }
+        });
+      }
     });
   </script>
 </body>

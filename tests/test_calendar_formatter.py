@@ -1,5 +1,5 @@
 import unittest
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 
 from output.calendar_formatter import _parse_ai_plan_events, to_fullcalendar_events
@@ -90,6 +90,74 @@ Note: This is daily.
         events = to_fullcalendar_events(day_context, {}, ai_text)
 
         self.assertEqual(sorted((event["title"], event["category"]) for event in events), [("CS Lecture", "class"), ("Study", "plan")])
+
+    def test_overlapping_events_are_flagged(self):
+        today = date.today()
+        lecture = _event("Lecture", today, 10)
+        meeting = _event("Meeting", today, 10)
+        meeting["start"] += timedelta(minutes=30)
+        meeting["end"] += timedelta(minutes=30)
+        day_context = {"date": today, "events": [lecture, meeting, _event("Gym", today, 14)]}
+
+        events = to_fullcalendar_events(day_context, {})
+
+        flagged = sorted(event["title"] for event in events if event.get("extendedProps", {}).get("conflict"))
+        self.assertEqual(flagged, ["Lecture", "Meeting"])
+        self.assertEqual(next(event for event in events if event["title"] == "Lecture")["classNames"], ["has-conflict"])
+
+    def test_suggestions_render_as_dashed_entries_and_absorb_matching_plan_blocks(self):
+        today = date.today()
+        study = {"ref": "study:t1", "kind": "study", "title": "Work on: Essay", "date": today.isoformat(),
+                 "start": "12:00", "end": "13:00", "all_day": False, "details": "Due Tue"}
+        deadline = {"ref": "deadline:e1:0", "kind": "deadline", "title": "Due: PS3", "date": today.isoformat(),
+                    "start": None, "end": None, "all_day": True, "details": "From Prof"}
+
+        events = to_fullcalendar_events({"date": today}, {}, "- 12:00 PM - 1:00 PM Work on: Essay", [], [study, deadline])
+
+        by_title = {event["title"]: event for event in events}
+        self.assertNotIn("plan", [event["category"] for event in events])
+        self.assertEqual(by_title["Work on: Essay"]["start"], f"{today.isoformat()}T12:00:00")
+        self.assertEqual(by_title["Work on: Essay"]["classNames"], ["suggestion"])
+        self.assertEqual(by_title["Work on: Essay"]["extendedProps"]["suggestion"], study)
+        self.assertTrue(by_title["Due: PS3"]["allDay"])
+
+    def test_task_entries_carry_their_key_and_due_time(self):
+        today = date.today()
+        task = {"id": "ical:1", "title": "HW 3", "notes": "", "due": datetime.combine(today, time.min, tzinfo=timezone.utc),
+                "due_time": "23:59", "list": "Canvas", "source": "ical"}
+
+        (entry,) = to_fullcalendar_events({"date": today, "tasks_due_today": [task]}, {})
+
+        self.assertEqual(entry["title"], "Task: HW 3 (due 11:59 PM)")
+        self.assertEqual((entry["extendedProps"]["key"], entry["extendedProps"]["source"]), ("ical:1", "task"))
+        self.assertEqual(entry["extendedProps"]["details"], "From Canvas")
+
+    def test_saved_events_and_timed_suggestions_are_draggable(self):
+        today = date.today()
+        gym = dict(_event("Gym", today, 18), source="ask_ai", id="a")
+        due = {"title": "Due", "start": today, "end": today + timedelta(days=1), "all_day": True, "source": "ask_ai", "id": "b"}
+        study = {"ref": "study:t1", "kind": "study", "title": "Work on: Essay", "date": today.isoformat(),
+                 "start": "12:00", "end": "13:00", "all_day": False, "details": ""}
+        deadline = {"ref": "deadline:e1:0", "kind": "deadline", "title": "Due: PS3", "date": today.isoformat(),
+                    "start": None, "end": None, "all_day": True, "details": ""}
+
+        events = to_fullcalendar_events({"date": today, "events": [gym, due, _event("Lecture", today, 8)]}, {}, None, [], [study, deadline])
+
+        by_title = {event["title"]: event for event in events}
+        self.assertTrue(by_title["Gym"]["editable"])
+        self.assertEqual((by_title["Due"]["editable"], by_title["Due"]["durationEditable"]), (True, False))
+        self.assertNotIn("editable", by_title["Lecture"])
+        self.assertTrue(by_title["Work on: Essay"]["editable"])
+        self.assertFalse(by_title["Due: PS3"]["editable"])
+
+    def test_reply_suggestion_does_not_hide_a_plan_block_at_the_same_time(self):
+        today = date.today()
+        reply = {"ref": "reply:e1:0", "kind": "reply", "title": "Reply: RSVP", "date": today.isoformat(),
+                 "start": "09:00", "end": "09:15", "all_day": False, "details": ""}
+
+        events = to_fullcalendar_events({"date": today}, {}, "- 9:00 AM - 10:30 AM Problem set 4", [], [reply])
+
+        self.assertEqual(sorted(event["title"] for event in events), ["Problem set 4", "Reply: RSVP"])
 
 
 if __name__ == "__main__":

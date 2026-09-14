@@ -1,4 +1,5 @@
 import json
+import logging
 from pathlib import Path
 
 from google.auth.transport.requests import Request
@@ -13,6 +14,8 @@ SCOPES = [
     "https://www.googleapis.com/auth/tasks.readonly",
     "https://www.googleapis.com/auth/gmail.readonly",
 ]
+
+logger = logging.getLogger(__name__)
 
 
 def get_credentials():
@@ -31,9 +34,10 @@ def get_credentials():
                 with TOKEN_FILE.open("w", encoding="utf-8") as handle:
                     handle.write(creds.to_json())
                 return creds
-        except Exception as e:
-            print(f"Token load failed: {e}, re-authenticating...")
+        except Exception as exc:
+            logger.warning("The saved Google sign-in couldn't be used (%s); signing in again.", exc)
 
+    logger.info("Opening the browser for Google sign-in.")
     flow = InstalledAppFlow.from_client_secrets_file(str(CREDENTIALS_FILE), SCOPES)
     creds = flow.run_local_server(port=0, open_browser=True)
 

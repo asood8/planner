@@ -1,5 +1,6 @@
 import json
 import os
+from collections.abc import Iterator
 from typing import Any
 
 import requests
@@ -9,13 +10,7 @@ class OllamaClient:
     def __init__(self, base_url: str | None = None):
         self.base_url = base_url or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 
-    def generate(self, prompt: str, model: str | None = None, stream: bool = True) -> str:
-        payload = {
-            "model": model or os.getenv("OLLAMA_MODEL", "qwen2.5:7b"),
-            "prompt": prompt,
-            "stream": stream,
-        }
-
+    def _post(self, payload: dict, stream: bool) -> requests.Response:
         try:
             response = requests.post(f"{self.base_url}/api/generate", json=payload, stream=stream, timeout=300)
             response.raise_for_status()
@@ -30,32 +25,55 @@ class OllamaClient:
                     f"Model not found. Pull it first with: ollama pull {payload['model']}"
                 ) from exc
             raise RuntimeError(f"Ollama request failed: {error_text or str(exc)}") from exc
+        return response
 
-        if not stream:
-            data = response.json()
-            return data.get("response") or data.get("result", "")
+    @staticmethod
+    def _payload(prompt: str, model: str | None, stream: bool) -> dict:
+        return {
+            "model": model or os.getenv("OLLAMA_MODEL", "qwen2.5:7b"),
+            "prompt": prompt,
+            "stream": stream,
+        }
 
-        full_text = []
+    def iter_generate(self, prompt: str, model: str | None = None) -> Iterator[str]:
+        """Yield response tokens as Ollama streams them. Raises RuntimeError on Ollama errors."""
+        response = self._post(self._payload(prompt, model, stream=True), stream=True)
         for line in response.iter_lines(decode_unicode=True):
             if not line:
                 continue
-            try:
-                chunk = line
-                if chunk.startswith("data:"):
-                    chunk = chunk[5:].strip()
-                if not chunk:
-                    continue
-                payload_chunk = None
-                try:
-                    payload_chunk = json.loads(chunk)
-                except ValueError:
-                    payload_chunk = {"response": chunk}
-                token = payload_chunk.get("response") or payload_chunk.get("result", "")
-                if token:
-                    print(token, end="", flush=True)
-                    full_text.append(token)
-            except Exception:
+            chunk = line[5:].strip() if line.startswith("data:") else line
+            if not chunk:
                 continue
+            try:
+                payload_chunk = json.loads(chunk)
+            except ValueError:
+                payload_chunk = {"response": chunk}
+            if not isinstance(payload_chunk, dict):
+                continue
+            if payload_chunk.get("error"):
+                raise RuntimeError(f"Ollama error: {payload_chunk['error']}")
+            token = payload_chunk.get("response") or payload_chunk.get("result", "")
+            if token:
+                yield token
+
+    def generate(self, prompt: str, model: str | None = None, stream: bool = True) -> str:
+        if not stream:
+            data = self._post(self._payload(prompt, model, stream=False), stream=False).json()
+            return data.get("response") or data.get("result", "")
+
+        full_text = []
+        for token in self.iter_generate(prompt, model):
+            print(token, end="", flush=True)
+            full_text.append(token)
 
         print()
         return "".join(full_text)
+
+    def generate_json(self, prompt: str, schema: dict, model: str | None = None) -> Any:
+        """Structured output: `schema` goes in Ollama's `format`, temperature 0. Malformed output -> {}."""
+        payload = {**self._payload(prompt, model, stream=False), "format": schema, "options": {"temperature": 0}}
+        data = self._post(payload, stream=False).json()
+        try:
+            return json.loads(data.get("response") or "{}")
+        except ValueError:
+            return {}

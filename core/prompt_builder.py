@@ -1,17 +1,17 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-SYSTEM_PROMPT_PATH = BASE_DIR / "prompts" / "planner_system_prompt.txt"
-CONFIG_PATH = BASE_DIR / "config.json"
+from core.settings import Settings
 
+SYSTEM_PROMPT_PATH = Path(__file__).resolve().parent.parent / "prompts" / "planner_system_prompt.txt"
 
-def _load_config() -> dict[str, Any]:
-    with CONFIG_PATH.open("r", encoding="utf-8") as handle:
-        return json.load(handle)
+PLAN_REQUESTS = {
+    "daily": "Generate a daily plan only.",
+    "weekly": "Generate a weekly overview only.",
+    "all": "Generate a daily plan, a weekly overview, and long-term items to not forget.",
+}
 
 
 def _load_system_prompt() -> str:
@@ -19,32 +19,42 @@ def _load_system_prompt() -> str:
         return handle.read().strip()
 
 
-def build_prompt(day_context: dict[str, Any], week_context: dict[str, Any], request: str, context_text: str | None = None) -> str:
+def _user_context(settings: Settings) -> str:
+    """The user's own context text plus whichever profile details are filled in."""
+    profile = settings.user_profile
+    lines = [
+        f"{label}: {value}"
+        for label, value in (
+            ("Sleep time", profile.sleep_time),
+            ("Wake time", profile.wake_time),
+            ("Priority style", profile.priority_style),
+        )
+        if value
+    ]
+    if profile.recurring_commitments:
+        lines.append("Recurring commitments: " + "; ".join(profile.recurring_commitments))
+    parts = [settings.user_context]
+    if lines:
+        parts.append("User profile:\n- " + "\n- ".join(lines))
+    return "\n\n".join(part for part in parts if part)
+
+
+def build_prompt(
+    day_context: dict[str, Any],
+    week_context: dict[str, Any],
+    request: str,
+    context_text: str | None = None,
+    settings: Settings | None = None,
+) -> str:
     """Assemble the system prompt, user context, dynamic context, and request into one prompt."""
-    config = _load_config()
-    system_prompt = _load_system_prompt()
-
-    user_context = config.get("user_context", "")
-    user_profile = config.get("user_profile", {})
-    if user_profile:
-        profile_lines = [
-            f"Sleep time: {user_profile.get('sleep_time', 'unknown')}",
-            f"Wake time: {user_profile.get('wake_time', 'unknown')}",
-            f"Priority style: {user_profile.get('priority_style', 'unknown')}",
-        ]
-        if user_profile.get("recurring_commitments"):
-            profile_lines.append(
-                "Recurring commitments: " + "; ".join(user_profile["recurring_commitments"])
-            )
-        user_context = f"{user_context}\n\nUser profile:\n- " + "\n- ".join(profile_lines)
-
+    settings = settings or Settings()
     dynamic_context = f"Current date: {day_context.get('date', 'unknown')}\n\n{context_text.strip() if context_text else ''}"
 
     return "\n\n".join(
         [
-            system_prompt,
+            _load_system_prompt(),
             "USER CONTEXT",
-            user_context.strip(),
+            _user_context(settings),
             "DYNAMIC CONTEXT",
             dynamic_context,
             f"REQUEST: {request}",

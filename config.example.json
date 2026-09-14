@@ -4,6 +4,17 @@
   "calendar_days_ahead": 14,
   "max_emails": 20,
   "include_gmail": true,
+  "study_blocks": {
+    "days_ahead": 3,
+    "default_minutes": 60,
+    "max_session_minutes": 90,
+    "max_minutes_per_day": 240,
+    "preferred_hours": [9, 21],
+    "learn_estimates": true
+  },
+  "ical_feeds": [
+    {"name": "Canvas", "url": ""}
+  ],
   "output_mode": "browser",
   "user_context": "",
   "user_profile": {

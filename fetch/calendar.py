@@ -3,29 +3,27 @@ from datetime import date, datetime, time, timedelta
 from googleapiclient.discovery import build
 
 from auth.google_auth import get_credentials
+from core import timeutil
 
 
 def _sort_key(event):
     """Sort all-day events (plain dates) at local midnight alongside timed events."""
     start = event["start"]
-    if isinstance(start, datetime):
-        return start
-    return datetime.combine(start, time.min).astimezone()
+    return start if isinstance(start, datetime) else timeutil.at(start, time.min)
 
 
 def get_events(creds=None, days_ahead=14):
     """Return upcoming calendar events as clean dictionaries.
 
-    Timed events are timezone-aware datetimes in the machine's local timezone;
-    all-day events are plain dates.
+    Timed events are aware datetimes in local time (see core/timeutil.py); all-day events are plain dates.
     """
     if creds is None:
         creds = get_credentials()
 
-    service = build("calendar", "v3", credentials=creds)
+    service = build("calendar", "v3", credentials=creds, cache_discovery=False)
 
     # Start at local midnight so events earlier today still count toward today's schedule.
-    day_start = datetime.combine(date.today(), time.min).astimezone()
+    day_start = timeutil.at(timeutil.today(), time.min)
     time_min = day_start.isoformat()
     time_max = (day_start + timedelta(days=days_ahead)).isoformat()
 
@@ -63,8 +61,8 @@ def get_events(creds=None, days_ahead=14):
                 start_dt = date.fromisoformat(start_raw)
                 end_dt = date.fromisoformat(end_raw) if end_raw else None
             else:
-                start_dt = datetime.fromisoformat(start_raw.replace("Z", "+00:00")).astimezone()
-                end_dt = datetime.fromisoformat(end_raw.replace("Z", "+00:00")).astimezone() if end_raw else None
+                start_dt = timeutil.to_local(datetime.fromisoformat(start_raw.replace("Z", "+00:00")))
+                end_dt = timeutil.to_local(datetime.fromisoformat(end_raw.replace("Z", "+00:00"))) if end_raw else None
 
         if start_dt is None:
             continue
