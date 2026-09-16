@@ -73,3 +73,7 @@ The first run of either one opens a browser window for Google's OAuth consent (w
 ## Tests
 
     python -m unittest discover -s tests -v
+
+## License
+
+MIT — see [LICENSE](LICENSE).
