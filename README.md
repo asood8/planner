@@ -1,78 +1,171 @@
 # Local AI Planner
 
-Reads Google Calendar, Google Tasks, and unread Gmail, and generates a daily/weekly
-plan using a locally-run Ollama model. No cloud AI calls, no data leaves your machine.
+A planner that reads your Google Calendar, Google Tasks, and unread Gmail, decides when you should work on
+what's due, and writes a daily or weekly plan using a language model running on your own machine. No cloud AI
+service is involved, and everything the planner creates stays in a folder on your computer.
 
 ![The week view: classes, events, and tasks marked in highlighter colors, dashed suggested study and exam-review sessions, a red outline where two events overlap, and a sidebar with this week's warnings, sessions to check in, and the day's plan](docs/screenshots/week.png)
 
-<sub>Screenshots use made-up sample data. To regenerate them after changing the page, run `.venv\Scripts\python.exe docs\make_screenshots.py`.</sub>
+<sub>Screenshots use made-up sample data.</sub>
+
+## What it does
+
+- Collects your week from Google Calendar, Google Tasks, unread Gmail, and read-only calendar feeds such as Canvas.
+- Suggests when to work on each task, using a constraint solver that respects your deadlines, your preferred
+  study hours, and a daily limit on how much you'll study.
+- Spreads exam review over the days before an exam instead of leaving it to the night before.
+- Learns how long your tasks actually take and adjusts its future estimates.
+- Warns you when a day is overloaded, or when the work due later this week won't fit in the time you have left.
+- Writes the plan itself with your local model, and draws it on the calendar.
 
 ## Requirements
-- Python 3.11+
-- [Ollama](https://ollama.com) installed and running, with a model pulled (e.g. `ollama pull phi4-mini`)
-- A Google Cloud project with the Calendar, Tasks, and Gmail APIs enabled
+
+- Python 3.11 or newer.
+- [Ollama](https://ollama.com), running, with a model pulled (for example `ollama pull phi4-mini`).
+- A Google Cloud project with the Calendar, Tasks, and Gmail APIs enabled.
+
+The planner itself runs on Windows, macOS, and Linux. The `.bat` launchers and the desktop notifications are
+Windows-only; everywhere else, run the Python commands directly.
 
 ## Setup
+
 1. `python -m venv .venv`
-2. `.\.venv\Scripts\Activate.ps1` (Windows) or `source .venv/bin/activate` (Mac/Linux)
+2. `.\.venv\Scripts\Activate.ps1` (Windows) or `source .venv/bin/activate` (macOS and Linux)
 3. `pip install -r requirements.txt`
-4. Create OAuth credentials in Google Cloud Console (Desktop app type), download as `credentials.json` in the project root. Add yourself as a test user under OAuth consent screen while the app is unverified.
-5. Copy `config.example.json` to `config.json` and fill in your own context. Set `timezone` to your time zone (for example `America/New_York`); leave it blank to use your computer's. If a setting has a value the planner can't use, it tells you which one and why. The web app shows this at the top of the sidebar and keeps running on the defaults until you fix it.
+4. In the Google Cloud Console, create OAuth credentials of type "Desktop app" and save the download as
+   `credentials.json` in the project root. While your app is unverified, add your own account as a test user on
+   the OAuth consent screen.
+5. Copy `config.example.json` to `config.json` and fill in your details. Set `timezone` to your own zone, for
+   example `America/New_York`, or leave it blank to use your computer's. If a setting has a value the planner
+   can't use, it names the setting and the reason, shows it at the top of the sidebar, and carries on with the
+   defaults until you fix it.
+
+The first run opens a browser window for Google's consent screen. With the web app, the page keeps loading until
+you finish signing in. This happens once; after that the token is cached in `token.json`.
+
+All four Google scopes are read-only. The planner never creates, edits, or deletes anything in your Google
+account.
 
 ## Running it
 
-**Full plan from your Google data.** Fetches Calendar, Tasks, and Gmail, asks Ollama for a plan, and writes `output/planner_dashboard.html`:
+**A plan from the command line.** Fetches your data, asks Ollama for a plan, and writes
+`output/planner_dashboard.html`:
 
     python plan.py --daily      # or --weekly, or --all (the default with no flag)
 
-On Windows, `run_planner.bat` / `run_planner.ps1` do the same using `.venv`.
+On Windows, `run_planner.bat` does the same through `.venv`, and starts Ollama first if it isn't running.
 
-**Web app.** A local dashboard with your Google Calendar events and Tasks. On Windows, run `run_server.bat`: it uses `.venv`, starts Ollama if it isn't running, and opens the page in your browser. Or start it yourself:
+**The web app.** A dashboard served on your machine, with everything below:
 
     python server.py            # then open http://127.0.0.1:5000
 
-- **Generate plan** streams a daily or weekly plan into the sidebar as it's written, then draws its time blocks on the calendar. Your permanent note is included as standing context. Plans are saved, so the latest one survives restarts and **Past plans…** shows earlier ones.
-- **Ask AI** turns your notes into calendar events, avoiding times that are already booked. Drag one of these events to move or resize it, or click it to delete it (or everything created from the same note).
-- **Quick add.** Type something like `gym tomorrow 5pm` or `dentist fri 2:30-3:30pm` in the box at the top and press Enter. Dates, times, ranges and durations (`for 2h`) are understood without the model; anything else goes to the model like an Ask AI note.
-- **Study blocks.** Tasks due in the next 3 days get suggested work sessions in your free time before the deadline. A task counts as 60 minutes unless its title or notes say otherwise, like `~2h` or `est 90m`. The sessions are placed by a small optimizer (Google's OR-Tools CP-SAT solver), which treats it as a scheduling problem:
-  - **Rules it never breaks:** sessions from 30 minutes up to `max_session_minutes`, a 15-minute break after each one, no more than `max_minutes_per_day` of study on any day (counting sessions you've already added), and nothing after the deadline.
-  - **What it aims for, in order:** fit all the work in, putting the nearest deadlines first when time is short; stay inside your `preferred_hours`; spread a long task over several days instead of cramming it into one; prefer fewer, longer sessions; and do the work sooner rather than later. Each day's sessions then start as early as your preferred hours and calendar allow, most urgent task first.
-  - Click a suggested session to see why it went there, for example "Due Tue Sep 15 (tomorrow). Split across 2 days so it isn't crammed. Inside your preferred study hours."
-  - If there isn't enough free time, a warning appears in the sidebar. If OR-Tools isn't installed, a simpler earliest-free-time scheduler is used instead.
-  - All of this is set in `config.json` under `study_blocks`.
-- **Estimates that learn.** When you mark a task done, the planner adds up the study sessions for it that had started and asks **How long did it take?**, with that number filled in. Once 3 tasks have been measured, it compares how long they took with what was planned and adjusts future estimates to match. For example, if School tasks keep taking about 1.5× as long as you estimated, it plans more time for them. It learns separately for each task list, falls back to all your tasks for lists without enough history, and pulls small samples toward 1× so one unusual task can't throw it off. The sidebar's **Estimates** section shows what it has learned. To turn it off, set `learn_estimates` to `false`.
-- **Check in on past sessions.** Once a work session you added has passed, **Did these happen?** in the sidebar asks whether you did it (or click the session on the calendar). If you skipped it, its time goes back into the suggestions instead of counting as done. Sessions you don't answer still count.
-- **Exam prep.** Calendar events that look like exams (midterm, final, quiz, test) get suggested review sessions spread over the days before, ending the day before the exam: 4 hours of review for an exam and 1 for a quiz, unless the event says otherwise, like `~6h`. Tune it under `exam_prep` in `config.json`; `"days_before": 0` turns it off.
-- **Coming up this week.** Warnings in the sidebar when a day is packed with events, or when work due later in the week won't fit in the free study time left before it.
-- **Wrapping up today.** From 6 PM (`user_profile.review_hour`), the sidebar sums up the day: what you finished, how your work sessions went, what's still open (with a **Mark done** link), and how tomorrow starts. Anything unfinished gets time suggested again on its own.
-- **Email deadlines.** Your local model reads unread emails that mention a deadline or ask for a reply, once per email. Deadlines appear as suggested all-day events, and reply requests as a suggested 15-minute block.
-- Suggestions have a dashed border. Click one to add it to the planner's calendar or dismiss it, or drag a work session to a better time to add it there.
-- **Mark tasks done.** Click a task on the calendar to mark it done. This only hides it in the planner (Google Tasks isn't changed), and removes any of its study sessions that haven't started yet. **Marked done** in the sidebar lets you undo it.
-- Overlapping events get a red outline, and a line marks the current time. The **Connections** box shows whether Ollama is running and lets you pick which installed model to use. Google data is cached for 5 minutes; **↻ Refresh** fetches it again.
+On Windows, `run_server.bat` starts Ollama if needed and opens the page for you.
+
+## Inside the dashboard
+
+**Plans.** **Generate plan** streams a plan into the sidebar as the model writes it, then draws its time blocks
+on the calendar. Choose Today, This week, or Both. Plans are saved, so the most recent one survives a restart,
+and **Earlier plans** brings back previous ones.
+
+**Notes and quick add.** Write in the Note box and choose **Add notes to calendar** to turn plain sentences into
+events that avoid times you're already busy. A standing note is kept alongside it and included every time, which
+is a good place for things like a recurring gym slot. For a single event, type it in the box at the top of the
+sidebar — `gym tomorrow 5pm` or `dentist fri 2:30-3:30pm` — and press Enter. Dates, times, ranges, and durations
+such as `for 2h` are understood without the model; anything else is handed to it.
+
+**Study sessions.** Tasks due within the next three days get suggested work sessions in your free time. A task is
+assumed to take an hour unless its title or notes say otherwise, with a note like `~2h` or `est 90m`. Sessions
+are placed by Google's OR-Tools CP-SAT solver, which treats your week as a scheduling problem:
+
+- **Rules it never breaks:** sessions run from 30 minutes up to `max_session_minutes`, each is followed by a
+  15-minute break, no day holds more than `max_minutes_per_day` of study (counting sessions you've already
+  accepted), and nothing is scheduled after a deadline.
+- **What it aims for, in order:** fit all the work in, favouring the nearest deadlines when time is short; stay
+  within your `preferred_hours`; spread a long task across several days rather than cramming it into one; use
+  fewer, longer sessions; and do the work sooner rather than later. Within each day, sessions start as early as
+  your calendar and preferred hours allow, most urgent task first.
+- Click a session to see the reasoning, for example "Due Tue Sep 15 (tomorrow). Split across 2 days so it isn't
+  crammed. Inside your preferred study hours."
+- When there isn't enough free time, the sidebar says so and by how much. If OR-Tools isn't available, a simpler
+  earliest-free-time scheduler takes over.
+- The numbers above live in `config.json` under `study_blocks`.
+
+**Estimates that learn.** When you mark a task done, the planner adds up the sessions you'd started for it and
+asks **How long did it take?** with that total filled in. After three measured tasks it compares the time they
+took against what was planned and adjusts future estimates. If tasks in one of your lists consistently take half
+again as long as expected, it starts planning that much time for them. Each list is learned separately, lists
+without enough history fall back to your overall record, and small samples are pulled toward no adjustment so a
+single unusual task can't distort things. **How long things take** in the sidebar shows what it has worked out.
+Set `learn_estimates` to `false` to switch this off.
+
+**Check-ins.** Once a session you accepted has passed, **Did these happen?** asks whether you did it; you can
+also click the session on the calendar. Marking one as skipped returns its time to the suggestions rather than
+counting it as work done. Sessions you never answer still count.
+
+**Exam prep.** Calendar events that look like exams — midterm, final, quiz, test — get review sessions spread
+across the days beforehand, finishing the day before the exam. An exam is assumed to need four hours of review
+and a quiz one hour, unless the event says otherwise with something like `~6h`. This is configured under
+`exam_prep`, and `"days_before": 0` turns it off.
+
+**Coming up this week.** The sidebar flags days packed with events, and warns when the work due later in the week
+won't fit in the study time left before it.
+
+**Wrapping up today.** From 6 PM, which you can change with `user_profile.review_hour`, the sidebar reviews the
+day: what you finished, how your sessions went, what's still open with a **Mark done** link beside it, and how
+tomorrow begins. Nothing needs to be carried over by hand; unfinished work is suggested again on its own.
+
+**Email deadlines.** Your local model reads unread mail that mentions a deadline or asks for a reply, once per
+message. Deadlines become suggested all-day entries and replies become suggested 15-minute blocks.
+
+**Marking tasks done.** Click a task on the calendar to mark it done. It's only hidden inside the planner, since
+Google Tasks is never modified, and any of its sessions that haven't started are removed. **Marked done** in the
+sidebar undoes it.
+
+**Reading the calendar.** Colors mark what a thing is: classes, events, tasks, items you added, and the AI plan.
+Suggestions have a dashed border — click one to accept or dismiss it, or drag it to a time that suits you better.
+Overlapping events get a red outline, and a line marks the current time. At the bottom of the sidebar, dots show
+whether each source loaded and whether Ollama is running, next to a picker for which installed model to use.
+Google data is cached for five minutes, and **Refresh** fetches it again.
 
 <p align="center"><img src="docs/screenshots/phone.png" width="320" alt="The sidebar on a phone-sized screen in the evening: this week's warnings, sessions to check in, the end-of-day review with a task still open, and the day's plan"></p>
 
-Everything the web app saves (added events, dismissed suggestions, plan history, email scan results, tasks marked done with how long they took, and session check-ins) is stored in `data/` on your machine. None of it is sent to Google.
+## Canvas and other calendar feeds
 
-**Canvas and other calendar feeds.** Add read-only calendar links to `config.json` under `ical_feeds`:
+Read-only calendar links go in `config.json` under `ical_feeds`:
 
     "ical_feeds": [
       {"name": "Canvas", "url": "https://canvas.example.edu/feeds/calendars/user_XXXX.ics"}
     ]
 
-In Canvas the link is under Calendar → Calendar Feed; for a Google Calendar it's the "Secret address in iCal format" in the calendar's settings. Assignments show up as tasks and get study-block suggestions; everything else shows as events. If the same calendar is also subscribed in Google Calendar, the copies are left out. These links are private, so keep them only in `config.json`, which isn't committed.
+In Canvas the address is under Calendar → Calendar Feed. For a Google calendar, it's the "Secret address in iCal
+format" in that calendar's settings. Assignments arrive as tasks and get study sessions like any other; the rest
+appear as events. If you subscribe to the same calendar in Google Calendar as well, the duplicates are left out.
+These links grant access to the calendar, so keep them in `config.json`, which is never committed.
 
-**Morning plan.** Run `schedule_morning_plan.bat` once to create a daily Windows task (7:00 by default, or pass a time like `schedule_morning_plan.bat 06:30`). Each morning it runs `run_planner.bat --daily --notify`, which starts Ollama if needed, writes the plan, and shows a notification with what's due, what's next, and any sessions to check in. Clicking the notification opens the web app if it's running, or the saved dashboard otherwise. To remove it: `schtasks /Delete /TN "Planner morning plan" /F`.
+## Daily notifications (Windows)
 
-**Evening review.** Run `schedule_evening_review.bat` once (9:00 PM by default, or pass a time) for a daily notification with the sessions to check in, the tasks still open, and how tomorrow starts. It runs `run_planner.bat --review`, which doesn't need Ollama. To remove it: `schtasks /Delete /TN "Planner evening review" /F`.
+**Morning plan.** Run `schedule_morning_plan.bat` once to create a daily task at 7:00, or pass a time such as
+`schedule_morning_plan.bat 06:30`. Each morning it writes the plan and shows a notification with what's due,
+what's next, and any sessions waiting to be checked in. Clicking it opens the web app if it's running, and the
+saved dashboard otherwise. Remove it with `schtasks /Delete /TN "Planner morning plan" /F`.
 
-Both the web app and the morning run write to `data/planner.log`, including the reason for any failure. If a morning plan didn't show up, look there first.
+**Evening review.** Run `schedule_evening_review.bat` once, at 9:00 PM by default, for a notification listing the
+sessions to check in, the tasks still open, and how tomorrow starts. It doesn't need Ollama. Remove it with
+`schtasks /Delete /TN "Planner evening review" /F`.
 
-The first run of either one opens a browser window for Google's OAuth consent (with `server.py`, the page keeps loading until you finish signing in). This only happens once; after that, `token.json` is cached locally.
+## Where your data lives
+
+Everything the planner saves — events you added, dismissed suggestions, plan history, email scan results, tasks
+marked done with how long they took, and session check-ins — is stored as plain JSON in `data/`. None of it goes
+back to Google or anywhere else. Both the web app and the scheduled runs log to `data/planner.log`, with the
+reason for any failure, which is the first place to look if a morning plan doesn't appear.
 
 ## Tests
 
-    python -m unittest discover -s tests -v
+    python -m unittest discover -s tests
+
+The suite needs neither Google nor Ollama; it covers the scheduler, the parsers, the time handling, and the
+web app's routes against stand-in data.
 
 ## License
 
