@@ -6,9 +6,9 @@ then photographs it with headless Chrome or Edge:
 
     .venv\\Scripts\\python.exe docs\\make_screenshots.py
 
-It writes docs/screenshots/week.png (desktop, as of 7:30 AM today) and docs/screenshots/phone.png (a phone-width
-screen at 8:30 PM, when the end-of-day review shows). The server's clock is pinned so the layout doesn't depend on
-when this runs; the browser's own clock only moves the red "now" line.
+It writes docs/screenshots/week.png (desktop, 7:30 AM) and docs/screenshots/phone.png (a phone-width screen at
+8:30 PM, when the end-of-day review shows), both on the Tuesday of the current week. The server's clock is pinned,
+and the page follows the server's clock, so the shots tell the same story whenever this runs.
 """
 from __future__ import annotations
 
@@ -45,12 +45,11 @@ BROWSERS = [
 
 SAMPLE_PLAN = """## Today
 
-The reading response is due tonight, so it goes first. Midterm review starts today in short sessions instead of one long cram on Thursday night.
+The reading response is due tonight, so it goes first. Midterm review is spread across the week in short sessions instead of one long cram on Thursday night.
 
+- **7:00 AM - 7:30 AM** Breakfast and a quick look at email
 - **8:00 AM - 9:00 AM** Reading response for Econ
-- **11:15 AM - 12:45 PM** Problem set 4, questions 1 to 4
-- **4:00 PM - 4:45 PM** Walk and a snack before the gym
-- **7:30 PM - 8:00 PM** Look over tomorrow's lab handout
+- **7:45 PM - 8:15 PM** Look over tomorrow's lecture notes
 
 ## Watch out for
 
@@ -58,8 +57,9 @@ The reading response is due tonight, so it goes first. Midterm review starts tod
 - Thursday's career fair overlaps Econ recitation. Decide which one you're going to.
 """
 
-TODAY = timeutil.today()
-SUNDAY = TODAY - timedelta(days=(TODAY.weekday() + 1) % 7)  # the calendar's week starts on Sunday
+_REAL_TODAY = timeutil.today()
+SUNDAY = _REAL_TODAY - timedelta(days=(_REAL_TODAY.weekday() + 1) % 7)  # the calendar's week starts on Sunday
+TODAY = SUNDAY + timedelta(days=2)  # always a Tuesday, so the sample week reads the same whenever this runs
 
 
 def _day(offset: int) -> date:
@@ -101,8 +101,8 @@ EVENTS = [
     _event("Hackathon", 6, (9, 0), (21, 0)),
 ]
 TASKS = [
-    _task("t-reading", "Reading response ~45m", 1, "Econ"),
-    _task("t-pset", "Problem set 4 ~3h", 2, "CS 201"),
+    _task("t-reading", "Reading response ~45m", 2, "Econ"),
+    _task("t-pset", "Problem set 4 ~3h", 3, "CS 201"),
     _task("ical:assignment-dcf", "DCF model ~4h", 4, "Canvas", due_time="23:59", source="ical"),
     _task("t-lab", "Lab report ~2h", 6, "CS 201"),
     _task("t-email", "Email TA about regrade", None, "Personal"),

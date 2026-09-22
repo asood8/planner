@@ -7,35 +7,47 @@
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,600;1,7..72,400&family=Schibsted+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:ital,wdth,wght@0,62..125,100..900;1,62..125,100..900&display=swap" rel="stylesheet">
   <!-- FullCalendar v6 injects its own CSS from the JS bundle; there is no separate stylesheet. -->
 
   <style>
     /*
-      Ink and highlighter: the dashboard is a paper planner.
-      Ink = confirmed. Highlighter color = kind of thing. Pencil (dashed, italic) = suggested, not yet added.
-      Red pen = needs attention (conflicts, warnings, the current time). Dot grid = free time.
+      A timetable. The page answers "what now, what next" first; everything else supports it.
+      Amber means now (the Now block, today's date, the current-time line) and nothing else.
+      Each event category has its own tint. Dashed means suggested, not added yet. Red means a problem.
+      Times are set in Archivo's condensed width with tabular figures; everything else is normal width.
     */
     :root {
-      --paper: #FBFBF7;
-      --desk: #E4E7E0;
-      --ink: #1F2B47;
-      --ink-hover: #2C3B60;
-      --graphite: #717784;
-      --rule: #E2E5E7;
-      --rule-strong: #C9CED6;
-      --pen: #C8323B;
-      --ok: #2E9A62;
+      --canvas: #EDF0F4;
+      --sheet: #FFFFFF;
+      --ink: #15213B;
+      --ink-2: #26345A;
+      --slate: #5D6679;
+      --faint: #8C95A8;
+      --rule: #DDE2EA;
+      --rule-strong: #C5CCD8;
+
+      --signal: #F4B400;
+      --signal-deep: #B86E00;
+      --alert: #D2383A;
+      --alert-ink: #8E1F21;
+      --alert-wash: #FDECEC;
+      --ok: #2F9E63;
       --warn: #D18B16;
 
-      --hl-yellow: #FFE97A;
-      --hl-pink: #FFBADB;
-      --hl-green: #C1EFB0;
-      --hl-blue: #B4DDFF;
-      --hl-orange: #FFCD92;
+      --c-class: #DCE6FF;
+      --c-class-ink: #1C3B9C;
+      --c-event: #DCF1E3;
+      --c-event-ink: #1B5B37;
+      --c-task: #FFE6CC;
+      --c-task-ink: #8A4200;
+      --c-yours: #EAE1FF;
+      --c-yours-ink: #4A2A9B;
+      --c-plan: #D5F0EE;
+      --c-plan-ink: #0D5C56;
 
-      --ui: "Schibsted Grotesk", "Segoe UI", system-ui, sans-serif;
-      --text: "Literata", Georgia, "Times New Roman", serif;
+      --font: "Archivo", "Segoe UI", system-ui, sans-serif;
+      --condensed: 78%;
     }
 
     [hidden] { display: none !important; }
@@ -46,146 +58,266 @@
 
     body {
       margin: 0;
-      background: var(--desk);
+      background: var(--canvas);
       color: var(--ink);
-      font: 400 14px/1.45 var(--ui);
+      font: 400 14px/1.45 var(--font);
       -webkit-font-smoothing: antialiased;
     }
 
     :focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 
-    /* ---- The sheet: one piece of paper on the desk, two pages split by a binding rule ---- */
-    .planner {
+    /* ---- Frame: a top bar over the left column and the calendar sheet ---- */
+    .app {
       display: grid;
-      grid-template-columns: 360px minmax(0, 1fr);
-      height: calc(100vh - 24px);
-      margin: 12px;
-      background: var(--paper);
-      border: 1px solid rgba(31, 43, 71, 0.14);
-      border-radius: 10px;
-      box-shadow: 0 1px 0 rgba(31, 43, 71, 0.05), 0 22px 44px -28px rgba(31, 43, 71, 0.45);
-      overflow: hidden;
+      grid-template-columns: 392px minmax(0, 1fr);
+      grid-template-rows: auto minmax(0, 1fr);
+      height: 100vh;
     }
 
-    .today-page {
+    .topbar {
+      grid-column: 1 / -1;
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px 28px;
+      padding: 12px 22px;
+      background: var(--sheet);
+      border-bottom: 1px solid var(--rule);
+    }
+
+    .rail {
+      min-height: 0;
+      overflow-y: auto;
       display: flex;
       flex-direction: column;
-      min-height: 0;
-      border-right: 3px double var(--rule-strong);
-    }
-
-    .today-scroll {
-      flex: 1;
-      overflow-y: auto;
-      padding: 28px 28px 24px;
+      gap: 26px;
+      padding: 18px 16px 30px 22px;
       scrollbar-width: thin;
       scrollbar-color: var(--rule-strong) transparent;
     }
 
-    .week-page {
+    .board { display: flex; min-width: 0; min-height: 0; padding: 18px 22px 18px 6px; }
+
+    .sheet {
+      flex: 1;
       display: flex;
       flex-direction: column;
       min-width: 0;
       min-height: 0;
-      padding: 18px 22px 14px 20px;
+      padding: 14px 16px 10px;
+      background: var(--sheet);
+      border: 1px solid var(--rule);
+      border-radius: 14px;
     }
 
     #calendar { flex: 1; min-height: 0; }
 
-    /* ---- Today page ---- */
-    .day-head { margin-bottom: 22px; }
-    .day-weekday { margin: 0; font-size: 14px; font-weight: 600; color: var(--graphite); }
-    .day-date { margin: 2px 0 0; font-size: 32px; line-height: 1.05; font-weight: 800; letter-spacing: -0.025em; }
+    /* ---- Top bar: the date, quick add, and whether everything is connected ---- */
+    .today { display: flex; flex-direction: column; min-width: 150px; }
+    .today-weekday { margin: 0; font-size: 12.5px; font-weight: 500; color: var(--slate); }
+    .today-date { margin: 0; font-size: 22px; line-height: 1.1; font-weight: 700; font-stretch: 88%; letter-spacing: -0.01em; }
 
-    .quick-add { display: flex; gap: 8px; align-items: flex-end; }
+    .command { position: relative; flex: 1 1 340px; max-width: 580px; }
+    .quick-add { display: flex; gap: 8px; }
     .quick-add input {
       flex: 1;
       min-width: 0;
-      padding: 8px 2px 7px;
-      border: 0;
-      border-bottom: 1.5px solid var(--ink);
-      border-radius: 0;
-      background: transparent;
+      height: 40px;
+      padding: 0 12px 0 36px;
+      border: 1px solid var(--rule-strong);
+      border-radius: 10px;
+      background: var(--canvas) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 14 14'%3E%3Cpath d='M7 1.5v11M1.5 7h11' stroke='%235D6679' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat 13px center;
       color: var(--ink);
-      font: 400 15px/1.3 var(--ui);
+      font: 400 14.5px/1 var(--font);
     }
-    .quick-add input::placeholder { color: var(--graphite); }
-    .quick-add input:focus-visible { outline: none; border-bottom-width: 2.5px; padding-bottom: 6px; }
+    .quick-add input::placeholder { color: var(--faint); }
+    .quick-add input:focus-visible { outline: none; border-color: var(--ink); background-color: var(--sheet); box-shadow: 0 0 0 3px rgba(21, 33, 59, 0.12); }
+    .quick-add .btn { height: 40px; padding: 0 18px; }
+    /* The result of a quick add floats just under the field, so the layout doesn't jump. */
+    .command .msg {
+      position: absolute;
+      top: calc(100% + 6px);
+      left: 0;
+      z-index: 20;
+      max-width: 100%;
+      margin: 0;
+      padding: 6px 10px;
+      background: var(--sheet);
+      border: 1px solid var(--rule);
+      border-radius: 8px;
+      box-shadow: 0 10px 24px -16px rgba(21, 33, 59, 0.45);
+    }
 
-    .notices {
+    .system { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; margin-left: auto; font-size: 12.5px; color: var(--slate); }
+    .sources { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+    .source { display: inline-flex; align-items: center; gap: 6px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--rule-strong); }
+    .dot.ok { background: var(--ok); }
+    .dot.warn { background: var(--warn); }
+    .dot.fail { background: var(--alert); }
+
+    /* ---- Now and next: the departure board ---- */
+    .now { padding: 16px 18px 15px; background: var(--signal); border-radius: 14px; color: var(--ink); }
+    /* With nothing left today, amber would overstate it. */
+    .now.is-quiet { background: var(--sheet); border: 1px solid var(--rule); }
+    .now-label { margin: 0; font-size: 13px; font-weight: 600; }
+    .now-time {
+      margin: 2px 0 0;
+      font-size: 62px;
+      line-height: 0.95;
+      font-weight: 760;
+      font-stretch: 70%;
+      letter-spacing: -0.015em;
+      font-variant-numeric: tabular-nums;
+    }
+    .now-time .period { margin-left: 6px; font-size: 22px; font-weight: 650; font-stretch: 85%; letter-spacing: 0; }
+    .now-title { margin: 6px 0 0; font-size: 19px; line-height: 1.2; font-weight: 650; }
+    .now.is-quiet .now-title { font-size: 15px; font-weight: 500; }
+    .now-meta { margin: 4px 0 0; font-size: 13px; }
+    .now-meta:empty { display: none; }
+    .now-progress { height: 4px; margin-top: 10px; background: rgba(21, 33, 59, 0.18); border-radius: 2px; overflow: hidden; }
+    .now-progress span { display: block; height: 100%; width: 0; background: var(--ink); }
+
+    .next-list {
+      display: grid;
+      gap: 5px;
+      margin: 14px 0 0;
+      padding: 10px 0 0;
       list-style: none;
-      margin: 18px 0 0;
-      padding: 2px 0 2px 12px;
-      border-left: 2px solid var(--pen);
-      color: var(--pen);
-      font-size: 13px;
-      line-height: 1.45;
+      border-top: 1.5px solid rgba(21, 33, 59, 0.28);
     }
+    .now.is-quiet .next-list { border-top-color: var(--rule); }
+    .next-list li { display: grid; grid-template-columns: 66px minmax(0, 1fr) auto; gap: 10px; align-items: baseline; font-size: 13.5px; }
+    .next-time { font-size: 15px; font-weight: 700; font-stretch: var(--condensed); font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .next-title { overflow: hidden; font-weight: 550; white-space: nowrap; text-overflow: ellipsis; }
+    .next-when { font-size: 12px; opacity: 0.78; white-space: nowrap; }
+    /* Suggested, not added yet: the same dashed mark as on the calendar. */
+    .next-list li.is-suggested .next-title { font-style: italic; font-weight: 450; }
+    .next-list li.is-suggested .next-title::before {
+      content: "";
+      display: inline-block;
+      width: 9px;
+      height: 9px;
+      margin-right: 6px;
+      border: 1.5px dashed currentColor;
+      border-radius: 2px;
+      vertical-align: -1px;
+    }
+    .now-due { margin: 10px 0 0; font-size: 12.5px; }
+
+    /* ---- Things that need you: problems, the week ahead, check-ins, the day's wrap-up ---- */
+    .needs { display: flex; flex-direction: column; gap: 22px; }
+    .needs:not(:has(> :not([hidden]))) { display: none; }
+
+    .notices { margin: 0; padding: 0; list-style: none; font-size: 13px; line-height: 1.45; }
     .notices li + li { margin-top: 6px; }
+    #notices { padding: 10px 12px; background: var(--alert-wash); color: var(--alert-ink); border-radius: 10px; }
+    .notices-head { margin: 0; font-size: 15px; font-weight: 650; }
+    .notices-head + .notices { margin-top: -16px; }
+    #week-notes li { position: relative; padding-left: 15px; }
+    #week-notes li::before { content: ""; position: absolute; left: 2px; top: 0.55em; width: 6px; height: 6px; background: var(--alert); border-radius: 50%; }
 
-    .section { margin-top: 26px; padding-top: 18px; border-top: 1px solid var(--rule); }
-    .section-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
-    .section-title { margin: 0; font-size: 16px; font-weight: 700; letter-spacing: -0.01em; }
-    .plan-controls { display: flex; gap: 6px; align-items: center; }
+    .checkin-list, .review-open { margin: 8px 0 0; padding: 0; list-style: none; }
+    .checkin-list li, .review-open li {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 8px 0;
+      border-top: 1px solid var(--rule);
+    }
+    .checkin-what { min-width: 0; }
+    .checkin-title { display: block; font-weight: 600; }
+    .checkin-when { display: block; font-size: 12.5px; color: var(--slate); font-variant-numeric: tabular-nums; }
+    .checkin-actions { display: flex; flex: none; gap: 6px; }
+    .checkin-actions .text-link,
+    .review-open .text-link {
+      padding: 5px 11px;
+      background: var(--sheet);
+      border: 1px solid var(--rule-strong);
+      border-radius: 999px;
+      text-decoration: none;
+    }
+    .checkin-actions .text-link:first-child { background: var(--ink); border-color: var(--ink); color: var(--sheet); }
+    .review-line { margin: 6px 0 0; font-size: 13.5px; }
+    .review-line.quiet { font-size: 12.5px; color: var(--slate); }
 
-    .field-label { display: block; margin: 16px 0 2px; font-size: 13px; font-weight: 600; }
-    .field-help { margin: 6px 0 0; font-size: 12.5px; color: var(--graphite); }
+    /* ---- Sections ---- */
+    .section-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+    .section-title { margin: 0; font-size: 15px; font-weight: 650; }
+    .plan-controls { display: flex; align-items: center; gap: 6px; }
+    .field-label { display: block; margin: 12px 0 4px; font-size: 13px; font-weight: 600; }
+    .field-help { margin: 4px 0 0; font-size: 12.5px; color: var(--slate); }
 
-    /* Ruled paper: the lines move with the text as it scrolls. */
-    .lined {
+    .field {
       display: block;
       width: 100%;
-      min-height: 76px;
-      padding: 0 2px;
-      border: 0;
-      border-top: 1px solid var(--rule);
-      border-radius: 0;
-      background: transparent repeating-linear-gradient(to bottom, transparent 0, transparent 24px, var(--rule) 24px, var(--rule) 25px);
-      background-attachment: local;
+      min-height: 72px;
+      padding: 9px 11px;
+      background: var(--sheet);
+      border: 1px solid var(--rule-strong);
+      border-radius: 10px;
       color: var(--ink);
-      font: 400 14px/25px var(--ui);
+      font: 400 14px/1.45 var(--font);
       resize: vertical;
     }
-    .lined::placeholder { color: #A3A8B1; }
-    .lined:focus-visible { outline: none; border-top-color: var(--ink); }
+    .field::placeholder { color: var(--faint); }
+    .field:focus-visible { outline: none; border-color: var(--ink); box-shadow: 0 0 0 3px rgba(21, 33, 59, 0.12); }
 
-    .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
+    .row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 
     .btn {
       appearance: none;
-      padding: 8px 12px;
-      border: 1px solid var(--ink);
-      border-radius: 6px;
-      background: transparent;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      height: 34px;
+      padding: 0 13px;
+      background: var(--sheet);
+      border: 1px solid var(--rule-strong);
+      border-radius: 8px;
       color: var(--ink);
-      font: 600 13px/1 var(--ui);
-      cursor: pointer;
+      font: 600 13px/1 var(--font);
       white-space: nowrap;
+      cursor: pointer;
     }
-    .btn:hover { background: rgba(31, 43, 71, 0.06); }
-    .btn-ink { background: var(--ink); color: var(--paper); }
-    .btn-ink:hover { background: var(--ink-hover); }
-    .btn-quiet { border-color: transparent; padding: 6px 8px; color: var(--graphite); font-weight: 500; }
-    .btn-quiet:hover { color: var(--ink); background: transparent; text-decoration: underline; }
+    .btn:hover { border-color: var(--faint); }
+    .btn-ink { background: var(--ink); border-color: var(--ink); color: var(--sheet); }
+    .btn-ink:hover { background: var(--ink-2); border-color: var(--ink-2); }
+    .btn-quiet { padding: 0 6px; background: transparent; border-color: transparent; color: var(--slate); font-weight: 500; }
+    .btn-quiet:hover { border-color: transparent; color: var(--ink); text-decoration: underline; }
     .btn:disabled, .quick-add input:disabled { opacity: 0.5; cursor: progress; }
 
     .select {
       appearance: none;
-      padding: 7px 26px 7px 10px;
+      height: 34px;
+      padding: 0 28px 0 11px;
+      background: var(--sheet) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%2315213B' stroke-width='1.5'/%3E%3C/svg%3E") no-repeat right 10px center;
       border: 1px solid var(--rule-strong);
-      border-radius: 6px;
-      background: transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%231F2B47' stroke-width='1.5'/%3E%3C/svg%3E") no-repeat right 9px center;
+      border-radius: 8px;
       color: var(--ink);
-      font: 500 13px/1.2 var(--ui);
+      font: 500 13px/1 var(--font);
       cursor: pointer;
     }
-    .select-quiet { width: 100%; margin-top: 10px; border-color: transparent; border-bottom-color: var(--rule); border-radius: 0; padding-left: 0; color: var(--graphite); }
-    .select-small { padding: 4px 22px 4px 8px; font-size: 12px; background-position: right 7px center; max-width: 180px; }
+    .select-quiet { width: 100%; margin-top: 10px; color: var(--slate); }
+    .select-small { height: 30px; max-width: 180px; font-size: 12.5px; }
 
-    .msg { margin: 8px 0 0; font-size: 12.5px; color: var(--graphite); }
+    .text-link {
+      appearance: none;
+      padding: 0;
+      background: none;
+      border: 0;
+      color: var(--ink);
+      font: 600 12.5px/1.2 var(--font);
+      text-decoration: underline;
+      text-underline-offset: 3px;
+      cursor: pointer;
+    }
+
+    .msg { margin: 8px 0 0; font-size: 12.5px; color: var(--slate); }
     .msg.ok { color: var(--ok); }
     .msg.warn { color: var(--warn); }
-    .msg.error { color: var(--pen); }
+    .msg.error { color: var(--alert); }
     .msg.busy::before {
       content: "";
       display: inline-block;
@@ -201,107 +333,62 @@
     .row .msg { margin: 0; }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* The plan reads as writing, not interface. */
-    .plan-html { margin-top: 6px; font-family: var(--text); font-size: 15px; line-height: 1.6; color: var(--ink); }
+    /* ---- The plan. Its time ranges pick up the condensed figures used for times everywhere else. ---- */
+    .plan-html { margin-top: 10px; font-size: 14.5px; line-height: 1.6; }
     .plan-html .plan-html { margin: 0; }
-    .plan-html h1, .plan-html h2, .plan-html h3 {
-      margin: 20px 0 4px;
-      font: 700 13.5px/1.3 var(--ui);
-      color: var(--ink);
-    }
-    .plan-html p { margin: 8px 0; }
-    .plan-html ul { list-style: none; margin: 6px 0 10px; padding: 0; }
-    .plan-html ul li { position: relative; padding-left: 16px; margin: 3px 0; }
-    .plan-html ul li::before { content: "–"; position: absolute; left: 0; color: var(--graphite); }
-    .plan-html ol { margin: 6px 0 10px; padding-left: 22px; }
-    .plan-html ol li::marker { color: var(--graphite); font-family: var(--ui); font-size: 13px; }
-    .plan-html strong { font-weight: 600; }
-    .plan-stream { white-space: pre-wrap; color: var(--graphite); }
-    .plan-note { margin: 10px 0 0; font: 500 12.5px/1.4 var(--ui); color: var(--graphite); }
+    .plan-html h1, .plan-html h2, .plan-html h3 { margin: 16px 0 4px; font-size: 13.5px; font-weight: 700; }
+    .plan-html p { margin: 6px 0; }
+    .plan-html ul { margin: 6px 0 10px; padding: 0; list-style: none; }
+    .plan-html ul li { position: relative; margin: 3px 0; padding-left: 14px; }
+    .plan-html ul li::before { content: ""; position: absolute; left: 1px; top: 0.78em; width: 6px; height: 1.5px; background: var(--faint); }
+    .plan-html ol { margin: 6px 0 10px; padding-left: 20px; }
+    .plan-html ol li::marker { color: var(--slate); font-size: 13px; }
+    .plan-html strong { font-weight: 650; font-stretch: 86%; font-variant-numeric: tabular-nums; }
+    .plan-stream { color: var(--slate); white-space: pre-wrap; }
+    .plan-note { margin: 0 0 8px; font-size: 12.5px; color: var(--slate); }
 
-    .done-box { margin-top: 26px; font-size: 13px; }
-    .done-box summary { cursor: pointer; color: var(--graphite); font-weight: 500; }
-    .done-box ul { list-style: none; margin: 8px 0 0; padding: 0; }
-    .done-box li { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-top: 4px; }
-    .done-title { text-decoration: line-through; text-decoration-color: var(--graphite); color: var(--graphite); }
-    .text-link {
-      appearance: none;
-      padding: 0;
-      border: 0;
-      background: none;
-      color: var(--ink);
-      font: 600 12.5px/1.2 var(--ui);
-      text-decoration: underline;
-      text-underline-offset: 2px;
-      cursor: pointer;
-    }
-
-    .estimates-box li { display: block; color: var(--graphite); }
+    /* ---- Kept for reference: tasks marked done, and how long things take ---- */
+    .archive { display: flex; flex-direction: column; gap: 10px; padding-top: 14px; border-top: 1px solid var(--rule); font-size: 13px; }
+    .archive:not(:has(> :not([hidden]))) { display: none; }
+    .done-box summary { color: var(--slate); font-weight: 500; cursor: pointer; }
+    .done-box ul { margin: 8px 0 0; padding: 0; list-style: none; }
+    .done-box li { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-top: 4px; }
+    .done-title { color: var(--slate); text-decoration: line-through; }
+    .estimates-box li { display: block; color: var(--slate); }
 
     /* "How long did it take?" after marking a task done */
-    .duration-prompt { padding: 0 10px 8px; font-size: 12.5px; line-height: 1.4; color: var(--graphite); }
+    .duration-prompt { padding: 0 10px 8px; font-size: 12.5px; line-height: 1.4; color: var(--slate); }
     .duration-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; color: var(--ink); }
     .duration-row input {
       width: 90px;
-      padding: 6px 8px;
+      height: 32px;
+      padding: 0 8px;
+      background: var(--sheet);
       border: 1px solid var(--rule-strong);
-      border-radius: 6px;
-      background: transparent;
+      border-radius: 8px;
       color: var(--ink);
-      font: 500 14px/1.2 var(--ui);
+      font: 500 14px/1 var(--font);
+      font-variant-numeric: tabular-nums;
     }
 
-    /* Coming up this week: red pen, under a quiet heading */
-    .notices-head { margin: 18px 0 0; font-size: 12.5px; font-weight: 600; color: var(--graphite); }
-    .notices-head + .notices { margin-top: 6px; }
-
-    /* Check-ins and the end-of-day review */
-    .checkin-list, .review-open { list-style: none; margin: 10px 0 0; padding: 0; }
-    .checkin-list li, .review-open li {
-      display: flex;
-      justify-content: space-between;
-      align-items: baseline;
-      gap: 12px;
-      padding: 7px 0;
-      border-bottom: 1px solid var(--rule);
-    }
-    .checkin-what { min-width: 0; }
-    .checkin-title { display: block; font-weight: 600; }
-    .checkin-when { display: block; font-size: 12.5px; color: var(--graphite); }
-    .checkin-actions { display: flex; gap: 12px; flex: none; }
-    .review-line { margin: 8px 0 0; font-size: 13.5px; }
-    .review-line.quiet { font-size: 12.5px; color: var(--graphite); }
-
-    /* ---- Status footer (replaces the floating connections box) ---- */
-    .sheet-footer { padding: 12px 28px 14px; border-top: 1px solid var(--rule); font-size: 12px; color: var(--graphite); }
-    .sources { display: flex; flex-wrap: wrap; gap: 4px 11px; }
-    .source { display: inline-flex; align-items: center; gap: 6px; }
-    .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--rule-strong); }
-    .dot.ok { background: var(--ok); }
-    .dot.warn { background: var(--warn); }
-    .dot.fail { background: var(--pen); }
-    .footer-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
-    .footer-row .text-link { margin-left: auto; font-size: 12px; }
-    .sheet-footer .msg { margin-top: 6px; font-size: 12px; }
-
-    /* ---- Week page: FullCalendar in ink, highlighter, and pencil ---- */
+    /* ---- Calendar ---- */
     /* FullCalendar puts the .fc class on #calendar itself, so its variables are set here. */
     #calendar {
-      font-family: var(--ui);
+      font-family: var(--font);
       --fc-border-color: var(--rule);
-      --fc-page-bg-color: var(--paper);
-      --fc-neutral-bg-color: transparent;
-      --fc-today-bg-color: rgba(31, 43, 71, 0.03);
-      --fc-now-indicator-color: var(--pen);
-      --fc-event-bg-color: var(--hl-green);
+      --fc-page-bg-color: var(--sheet);
+      --fc-neutral-bg-color: var(--canvas);
+      --fc-today-bg-color: rgba(244, 180, 0, 0.06);
+      --fc-now-indicator-color: var(--signal-deep);
+      --fc-event-bg-color: var(--c-event);
       --fc-event-border-color: transparent;
-      --fc-event-text-color: var(--ink);
+      --fc-event-text-color: var(--c-event-ink);
       --fc-bg-event-opacity: 1;
       --fc-small-font-size: 11.5px;
       --fc-button-text-color: var(--ink);
       --fc-button-bg-color: transparent;
       --fc-button-border-color: transparent;
-      --fc-button-hover-bg-color: rgba(31, 43, 71, 0.06);
+      --fc-button-hover-bg-color: var(--sheet);
       --fc-button-hover-border-color: transparent;
       --fc-button-active-bg-color: var(--ink);
       --fc-button-active-border-color: var(--ink);
@@ -309,88 +396,70 @@
     #calendar a { color: inherit; text-decoration: none; }
 
     #calendar .fc-header-toolbar { margin-bottom: 12px; }
-    #calendar .fc-toolbar-title { font-size: 24px; font-weight: 800; letter-spacing: -0.025em; }
-    #calendar .fc-toolbar-chunk { display: flex; align-items: center; gap: 4px; }
+    #calendar .fc-toolbar-title { font-size: 22px; font-weight: 700; font-stretch: 88%; letter-spacing: -0.01em; }
+    #calendar .fc-toolbar-chunk { display: flex; align-items: center; gap: 6px; }
     #calendar .fc-button {
-      padding: 7px 10px;
-      border-radius: 6px;
+      height: 30px;
+      padding: 0 11px;
+      border-radius: 7px;
       box-shadow: none;
-      font: 600 13px/1 var(--ui);
+      font: 600 13px/1 var(--font);
       text-transform: none;
     }
     #calendar .fc-button:focus { box-shadow: none; }
     #calendar .fc-button:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
     #calendar .fc-button-primary:not(:disabled).fc-button-active,
-    #calendar .fc-button-primary:not(:disabled):active { color: var(--paper); }
+    #calendar .fc-button-primary:not(:disabled):active { color: var(--sheet); }
     #calendar .fc-button:disabled { opacity: 0.35; }
-    #calendar .fc-today-button { margin-right: 6px; border-color: var(--rule-strong); }
-    #calendar .fc-prev-button, #calendar .fc-next-button { padding: 6px 7px; }
-    #calendar .fc-button-group { gap: 2px; }
-    #calendar .fc-button-group > .fc-button { border-radius: 6px; }
+    #calendar .fc-today-button { border-color: var(--rule-strong); }
+    #calendar .fc-prev-button, #calendar .fc-next-button { padding: 0 8px; }
+    #calendar .fc-button-group { gap: 2px; padding: 2px; background: var(--canvas); border-radius: 9px; }
+    #calendar .fc-button-group > .fc-button { border-radius: 7px; }
 
     #calendar .fc-scrollgrid { border: 0; }
-    #calendar .fc-col-header-cell { text-align: left; border-left-color: transparent; border-right-color: transparent; border-bottom: 1.5px solid var(--ink); }
+    #calendar .fc-col-header-cell { text-align: left; border-left-color: transparent; border-right-color: transparent; }
     #calendar .fc-col-header-cell-cushion { display: inline-flex; align-items: baseline; gap: 6px; padding: 6px 6px 8px; }
-    #calendar .dow { font-size: 12.5px; font-weight: 600; color: var(--graphite); }
-    #calendar .dom { font-size: 20px; font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
-    #calendar .fc-day-today .dow, #calendar .fc-day-today .dom { color: var(--pen); }
+    #calendar .dow { font-size: 12px; font-weight: 500; color: var(--slate); }
+    #calendar .dom { font-size: 19px; font-weight: 700; font-stretch: var(--condensed); font-variant-numeric: tabular-nums; }
+    #calendar .fc-day-today .dow { color: var(--ink); font-weight: 600; }
+    #calendar .fc-day-today .dom { padding: 0 6px; background: var(--signal); border-radius: 7px; }
 
     #calendar .fc-timegrid-slot-label-cushion,
-    #calendar .fc-timegrid-axis-cushion { font-size: 11.5px; color: var(--graphite); font-variant-numeric: tabular-nums; }
+    #calendar .fc-timegrid-axis-cushion { font-size: 11.5px; font-stretch: var(--condensed); color: var(--slate); font-variant-numeric: tabular-nums; }
     #calendar .fc-timegrid-slot-label { vertical-align: top; }
     #calendar .fc-timegrid-slot-label-cushion { padding: 2px 8px 0 0; }
     #calendar .fc-timegrid-slot { height: 28px; }
     #calendar .fc-timegrid-slot-minor { border-top-style: dotted; }
     #calendar .fc-timegrid-now-indicator-line { border-width: 2px 0 0; }
-    #calendar .fc-daygrid-day-number { padding: 6px 8px; font-size: 13px; font-weight: 700; }
-    #calendar .fc-day-today .fc-daygrid-day-number { color: var(--pen); }
+    #calendar .fc-daygrid-day-number { padding: 6px 8px; font-size: 13px; font-weight: 650; font-stretch: var(--condensed); }
+    #calendar .fc-day-today .fc-daygrid-day-number { margin: 4px; padding: 2px 6px; background: var(--signal); border-radius: 6px; }
 
-    /* Highlighter strokes: multiply lets the ruled lines show through, like ink under a marker. */
-    #calendar .fc-event {
-      border: 0;
-      border-radius: 3px 8px 4px 7px / 7px 4px 8px 3px;
-      background-color: var(--hl-green);
-      box-shadow: none;
-      color: var(--ink);
-      mix-blend-mode: multiply;
-      cursor: default;
-    }
-    #calendar .fc-timegrid-event-harness-inset .fc-timegrid-event,
-    #calendar .fc-timegrid-event.fc-event-mirror { box-shadow: none; }
-    #calendar .fc-event .fc-event-main { color: var(--ink); padding: 3px 6px; }
-    #calendar .fc-event.cat-class { background-color: var(--hl-blue); }
-    #calendar .fc-event.cat-task { background-color: var(--hl-orange); }
+    /* Events: one tint per category, with a darker ink of the same hue for the text. */
+    #calendar .fc-event { background-color: var(--c-event); border: 0; border-radius: 6px; color: var(--c-event-ink); cursor: default; }
+    #calendar .fc-event .fc-event-main { padding: 3px 6px; color: inherit; }
+    #calendar .fc-event.cat-class { background-color: var(--c-class); color: var(--c-class-ink); }
     #calendar .fc-event.cat-event,
-    #calendar .fc-event.cat-personal { background-color: var(--hl-green); }
-    #calendar .fc-event.cat-ask_ai { background-color: var(--hl-pink); cursor: pointer; }
-    #calendar .fc-event.cat-plan { background-color: var(--hl-yellow); }
-    #calendar .fc-event.cat-task { cursor: pointer; }
+    #calendar .fc-event.cat-personal { background-color: var(--c-event); color: var(--c-event-ink); }
+    #calendar .fc-event.cat-task { background-color: var(--c-task); color: var(--c-task-ink); cursor: pointer; }
+    #calendar .fc-event.cat-ask_ai { background-color: var(--c-yours); color: var(--c-yours-ink); cursor: pointer; }
+    #calendar .fc-event.cat-plan { background-color: var(--c-plan); color: var(--c-plan-ink); }
 
-    /* Pencil: suggested, not added yet. */
-    #calendar .fc-event.suggestion {
-      background: transparent;
-      border: 1.5px dashed var(--graphite);
-      border-radius: 4px;
-      color: var(--graphite);
-      mix-blend-mode: normal;
-      cursor: pointer;
-    }
-    #calendar .fc-event.suggestion .fc-event-main { color: var(--graphite); }
-    #calendar .fc-event.suggestion .ev-title { font-family: var(--text); font-style: italic; font-weight: 400; }
-    #calendar .fc-event.suggestion.kind-deadline { border-color: var(--pen); }
-    #calendar .fc-event.suggestion.kind-deadline .fc-event-main { color: var(--pen); }
+    /* Suggested, not added yet. */
+    #calendar .fc-event.suggestion { background: var(--sheet); border: 1.5px dashed var(--faint); color: var(--slate); cursor: pointer; }
+    #calendar .fc-event.suggestion .ev-title { font-style: italic; font-weight: 500; }
+    #calendar .fc-event.suggestion.kind-deadline { border-color: var(--alert); color: var(--alert-ink); }
 
     /* Checked-in work sessions: skipped ones are crossed out. */
-    #calendar .fc-event.status-skipped { opacity: 0.5; }
+    #calendar .fc-event.status-skipped { opacity: 0.45; }
     #calendar .fc-event.status-skipped .ev-title { text-decoration: line-through; }
 
-    /* Red pen around anything that overlaps. */
-    #calendar .fc-event.has-conflict { outline: 1.5px solid var(--pen); outline-offset: 1px; }
+    /* A red ring around anything that overlaps. */
+    #calendar .fc-event.has-conflict { outline: 2px solid var(--alert); outline-offset: 1px; }
 
-    /* Free time is blank dot-grid paper, waiting to be filled in. */
+    /* Free time: a faint dot grid, open to be filled in. */
     #calendar .fc-bg-event { background: none; }
     #calendar .fc-bg-event.cat-free_block {
-      background-image: radial-gradient(circle, rgba(31, 43, 71, 0.2) 0.9px, transparent 1.3px);
+      background-image: radial-gradient(circle, rgba(21, 33, 59, 0.16) 0.9px, transparent 1.3px);
       background-size: 12px 12px;
       background-position: 6px 6px;
     }
@@ -402,25 +471,25 @@
     #calendar .fc-daygrid-event .ev { flex-direction: row; align-items: baseline; gap: 6px; }
     #calendar .fc-v-event .fc-event-main { height: 100%; overflow: hidden; }
     /* Blocks up to 50 minutes keep the title to one line. */
-    #calendar .fc-event.compact .ev-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #calendar .fc-event.compact .ev-title { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
     /* Blocks under ~35px tall: title only; the position already shows the time. */
     #calendar .fc-timegrid-event-short .fc-event-main { padding-top: 1px; padding-bottom: 0; }
     #calendar .fc-timegrid-event-short .ev { flex-direction: row; }
     #calendar .fc-timegrid-event-short .ev-time { display: none; }
-    #calendar .fc-timegrid-event-short .ev-title { font-size: 11.5px; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    #calendar .ev-time { font-size: 11px; font-weight: 500; opacity: 0.75; white-space: nowrap; }
+    #calendar .fc-timegrid-event-short .ev-title { overflow: hidden; font-size: 11.5px; line-height: 1.15; white-space: nowrap; text-overflow: ellipsis; }
+    #calendar .ev-time { font-size: 11.5px; font-weight: 600; font-stretch: var(--condensed); font-variant-numeric: tabular-nums; opacity: 0.8; white-space: nowrap; }
     #calendar .ev-title { font-size: 12.5px; font-weight: 600; }
     #calendar .task-box {
       flex: none;
+      align-self: center;
       width: 9px;
       height: 9px;
       margin-right: 1px;
       border: 1.5px solid currentColor;
       border-radius: 2px;
-      align-self: center;
     }
 
-    /* ---- Legend: what the marks mean ---- */
+    /* ---- Legend ---- */
     .legend {
       display: flex;
       flex-wrap: wrap;
@@ -429,18 +498,18 @@
       padding-top: 10px;
       border-top: 1px solid var(--rule);
       font-size: 12px;
-      color: var(--graphite);
+      color: var(--slate);
     }
     .legend-item { display: inline-flex; align-items: center; gap: 6px; }
-    .swatch { width: 18px; height: 10px; border-radius: 2px 5px 3px 4px; }
-    .swatch.hl-class { background: var(--hl-blue); }
-    .swatch.hl-event { background: var(--hl-green); }
-    .swatch.hl-task { background: var(--hl-orange); }
-    .swatch.hl-yours { background: var(--hl-pink); }
-    .swatch.hl-plan { background: var(--hl-yellow); }
-    .swatch.pencil { border: 1.5px dashed var(--graphite); border-radius: 3px; }
-    .swatch.free { background-image: radial-gradient(circle, rgba(31, 43, 71, 0.45) 0.8px, transparent 1.2px); background-size: 5px 5px; }
-    .swatch.overlap { background: var(--hl-green); outline: 1.5px solid var(--pen); outline-offset: 1px; }
+    .swatch { width: 16px; height: 10px; border-radius: 3px; }
+    .swatch.c-class { background: var(--c-class); }
+    .swatch.c-event { background: var(--c-event); }
+    .swatch.c-task { background: var(--c-task); }
+    .swatch.c-yours { background: var(--c-yours); }
+    .swatch.c-plan { background: var(--c-plan); }
+    .swatch.pencil { border: 1.5px dashed var(--faint); }
+    .swatch.free { background-image: radial-gradient(circle, rgba(21, 33, 59, 0.45) 0.8px, transparent 1.2px); background-size: 5px 5px; }
+    .swatch.overlap { background: var(--c-event); outline: 1.5px solid var(--alert); outline-offset: 1px; }
 
     /* ---- Tooltip and click menu ---- */
     .fc-tip {
@@ -449,10 +518,10 @@
       display: none;
       max-width: 340px;
       padding: 8px 10px;
-      border-radius: 6px;
       background: var(--ink);
-      color: var(--paper);
-      font: 400 12.5px/1.45 var(--ui);
+      border-radius: 8px;
+      color: var(--sheet);
+      font: 400 12.5px/1.45 var(--font);
       white-space: pre-line;
       pointer-events: none;
     }
@@ -464,137 +533,80 @@
       min-width: 230px;
       max-width: 320px;
       padding: 6px;
+      background: var(--sheet);
       border: 1px solid var(--rule-strong);
-      border-radius: 8px;
-      background: var(--paper);
-      box-shadow: 0 16px 36px -18px rgba(31, 43, 71, 0.5);
+      border-radius: 12px;
+      box-shadow: 0 18px 40px -20px rgba(21, 33, 59, 0.5);
     }
-    .action-menu .action-title { padding: 8px 10px 6px; font-weight: 700; font-size: 13.5px; }
+    .action-menu .action-title { padding: 8px 10px 6px; font-size: 14px; font-weight: 650; }
     .action-menu button {
       display: block;
       width: 100%;
       padding: 8px 10px;
-      border: 0;
-      border-radius: 5px;
       background: none;
+      border: 0;
+      border-radius: 7px;
       color: var(--ink);
-      font: 500 13px/1.3 var(--ui);
+      font: 500 13.5px/1.3 var(--font);
       text-align: left;
       cursor: pointer;
     }
-    .action-menu button:hover { background: rgba(31, 43, 71, 0.06); }
+    .action-menu button:hover { background: var(--canvas); }
     .action-menu button.primary { font-weight: 700; }
-    .action-menu button:last-child { color: var(--graphite); }
+    .action-menu button:last-child { color: var(--slate); }
 
     @media (prefers-reduced-motion: reduce) {
       .msg.busy::before { animation: none; }
     }
 
+    @media (max-width: 1180px) {
+      .app { grid-template-columns: 340px minmax(0, 1fr); }
+    }
+
+    /* Phones and narrow windows: one column, in the order you'd want it: now, what needs you, the calendar, then the rest. */
     @media (max-width: 900px) {
-      .planner { grid-template-columns: minmax(0, 1fr); height: auto; margin: 0; border: 0; border-radius: 0; box-shadow: none; }
-      .today-page { border-right: 0; border-bottom: 3px double var(--rule-strong); }
-      .today-scroll { overflow: visible; padding: 22px 18px 18px; }
-      .sheet-footer { padding: 12px 18px; }
-      .week-page { height: 88vh; padding: 14px 10px 10px; }
+      .app { display: flex; flex-direction: column; gap: 18px; height: auto; min-height: 100vh; padding-bottom: 28px; }
+      .topbar { gap: 10px 16px; padding: 12px 14px; }
+      .command { order: 1; flex-basis: 100%; max-width: none; }
+      /* The picker already shows a model name, so its label is for screen readers only here. */
+      .model-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+      .sources { flex-basis: 100%; }
+      .rail { display: contents; }
+      .now { order: 1; }
+      .needs { order: 2; }
+      .board { order: 3; height: 82vh; padding: 0 8px; }
+      .plan-section { order: 4; }
+      .notes-section { order: 5; }
+      .archive { order: 6; }
+      #scan-status { order: 7; }
+      .now, .needs, .plan-section, .notes-section, .archive, #scan-status { margin: 0 14px; }
+      .sheet { padding: 10px 8px 8px; border-radius: 12px; }
       #calendar .fc-header-toolbar { flex-wrap: wrap; gap: 8px; }
-      #calendar .fc-toolbar-title { font-size: 20px; }
+      #calendar .fc-toolbar-title { font-size: 19px; }
     }
   </style>
 </head>
 <body>
   {% macro status_dot(ok, label) %}<span class="source" title="{{ label }}: {{ 'connected' if ok else ('not loaded' if ok is none else 'fetch failed') }}"><span class="dot {{ 'ok' if ok else ('off' if ok is none else 'fail') }}"></span>{{ label }}</span>{% endmacro %}
 
-  <div class="planner">
-    <aside class="today-page">
-      <div class="today-scroll">
-        <header class="day-head">
-          <p class="day-weekday" id="today-weekday"></p>
-          <h1 class="day-date" id="today-date"></h1>
-        </header>
+  <div class="app">
+    <header class="topbar">
+      <div class="today">
+        <p class="today-weekday" id="today-weekday"></p>
+        <h1 class="today-date" id="today-date"></h1>
+      </div>
 
-        {% if live %}
+      {% if live %}
+      <div class="command">
         <form id="quick-add" class="quick-add" autocomplete="off">
-          <input id="quick-add-input" type="text" aria-label="Add an event" placeholder="e.g. gym tomorrow 5pm">
+          <input id="quick-add-input" type="text" aria-label="Add an event" placeholder="Add something, like gym tomorrow 5pm">
           <button type="submit" class="btn btn-ink">Add</button>
         </form>
         <p id="quick-add-status" class="msg" aria-live="polite" hidden></p>
-        {% endif %}
-
-        <ul id="notices" class="notices"{% if not notices %} hidden{% endif %}>{% for notice in notices or [] %}<li>{{ notice | e }}</li>{% endfor %}</ul>
-        <p id="week-head" class="notices-head"{% if not week_notes %} hidden{% endif %}>Coming up this week</p>
-        <ul id="week-notes" class="notices"{% if not week_notes %} hidden{% endif %}>{% for note in week_notes or [] %}<li>{{ note | e }}</li>{% endfor %}</ul>
-
-        {% if live %}
-        <section id="checkin-box" class="section" hidden>
-          <h2 class="section-title">Did these happen?</h2>
-          <p class="field-help">Skipped time goes back into the suggestions.</p>
-          <ul id="checkin-list" class="checkin-list"></ul>
-        </section>
-        <p id="checkin-status" class="msg" aria-live="polite" hidden></p>
-
-        <section id="review-box" class="section" hidden>
-          <h2 class="section-title">Wrapping up today</h2>
-          <p id="review-finished" class="review-line"></p>
-          <p id="review-sessions" class="review-line quiet"></p>
-          <p id="review-open-head" class="review-line quiet">Still open. These get time suggested tomorrow.</p>
-          <ul id="review-open" class="review-open"></ul>
-          <p id="review-tomorrow" class="review-line"></p>
-        </section>
-        {% endif %}
-
-        <section class="section">
-          <div class="section-head">
-            <h2 class="section-title">Plan</h2>
-            {% if live %}
-            <div class="plan-controls">
-              <select id="plan-mode" class="select" aria-label="What to plan">
-                <option value="daily">Today</option>
-                <option value="weekly">This week</option>
-                <option value="all">Both</option>
-              </select>
-              <button id="plan-btn" class="btn btn-ink" type="button">Generate plan</button>
-            </div>
-            {% endif %}
-          </div>
-          {% if live %}
-          <select id="plan-history" class="select select-quiet" aria-label="Earlier plans">
-            <option value="">Earlier plans</option>
-          </select>
-          <p id="plan-status" class="msg" aria-live="polite" hidden></p>
-          {% endif %}
-          <div class="plan-html" id="ai-plan-container">{{ ai_plan_html | safe }}</div>
-        </section>
-
-        <section class="section">
-          <h2 class="section-title">Notes</h2>
-          <label class="field-label" for="temp-note">Note</label>
-          <textarea id="temp-note" class="lined" rows="3" placeholder="dentist Thursday afternoon, call home this weekend"></textarea>
-          <label class="field-label" for="perm-note">Standing note</label>
-          <textarea id="perm-note" class="lined" rows="3" placeholder="I go to the gym most days around 5pm"></textarea>
-          <p class="field-help">Saved in this browser and used whenever you add notes or generate a plan.</p>
-          <div class="row">
-            <button id="save-perm" class="btn btn-quiet" type="button">Save standing note</button>
-            <button id="clear-perm" class="btn btn-quiet" type="button">Clear</button>
-          </div>
-          <div class="row">
-            <button id="ask-ai-btn" class="btn" type="button">Add notes to calendar</button>
-            <p id="ai-loading" class="msg" aria-live="polite" hidden></p>
-          </div>
-        </section>
-
-        {% if live %}
-        <details id="done-box" class="done-box"{% if not done_tasks %} hidden{% endif %}>
-          <summary>Marked done (<span id="done-count">{{ (done_tasks or []) | length }}</span>)</summary>
-          <ul id="done-list">{% for entry in done_tasks or [] %}<li><span class="done-title">{{ entry.title | e }}</span><button type="button" class="text-link undo-done" data-key="{{ entry.key | e }}">Undo</button></li>{% endfor %}</ul>
-        </details>
-        <details id="estimates-box" class="done-box estimates-box"{% if not estimate_notes %} hidden{% endif %}>
-          <summary>How long things take</summary>
-          <ul id="estimates-list">{% for line in estimate_notes or [] %}<li>{{ line | e }}</li>{% endfor %}</ul>
-        </details>
-        {% endif %}
       </div>
+      {% endif %}
 
-      <footer class="sheet-footer">
+      <div class="system">
         <div class="sources">
           {{ status_dot(calendar_ok, 'Calendar') }}
           {{ status_dot(tasks_ok, 'Tasks') }}
@@ -603,28 +615,115 @@
           {% if live %}<span id="ollama-status" class="source" title="Ollama: checking…"><span id="ollama-dot" class="dot off"></span>Ollama</span>{% endif %}
         </div>
         {% if live %}
-        <div class="footer-row">
-          <label for="model-select">Model</label>
-          <select id="model-select" class="select select-small"></select>
-          <a class="text-link" href="/?refresh=1" title="Fetch fresh data from Google">Refresh</a>
-        </div>
-        <p id="scan-status" class="msg" aria-live="polite" hidden></p>
+        <label class="model-label" for="model-select">Model</label>
+        <select id="model-select" class="select select-small"></select>
+        <a class="text-link" href="/?refresh=1" title="Fetch fresh data from Google">Refresh</a>
         {% endif %}
-      </footer>
+      </div>
+    </header>
+
+    <aside class="rail">
+      <section id="now-box" class="now" aria-label="Now and next">
+        <p id="now-label" class="now-label"></p>
+        <p id="now-time" class="now-time"></p>
+        <p id="now-title" class="now-title"></p>
+        <p id="now-meta" class="now-meta"></p>
+        <div id="now-progress" class="now-progress" hidden><span></span></div>
+        <ol id="now-next" class="next-list" hidden></ol>
+        <p id="now-due" class="now-due" hidden></p>
+      </section>
+
+      <div class="needs">
+        <ul id="notices" class="notices"{% if not notices %} hidden{% endif %}>{% for notice in notices or [] %}<li>{{ notice | e }}</li>{% endfor %}</ul>
+        <p id="week-head" class="notices-head"{% if not week_notes %} hidden{% endif %}>Coming up this week</p>
+        <ul id="week-notes" class="notices"{% if not week_notes %} hidden{% endif %}>{% for note in week_notes or [] %}<li>{{ note | e }}</li>{% endfor %}</ul>
+
+        {% if live %}
+        <section id="checkin-box" hidden>
+          <h2 class="section-title">Did these happen?</h2>
+          <p class="field-help">Skipped time goes back into the suggestions.</p>
+          <ul id="checkin-list" class="checkin-list"></ul>
+        </section>
+        <p id="checkin-status" class="msg" aria-live="polite" hidden></p>
+
+        <section id="review-box" hidden>
+          <h2 class="section-title">Wrapping up today</h2>
+          <p id="review-finished" class="review-line"></p>
+          <p id="review-sessions" class="review-line quiet"></p>
+          <p id="review-open-head" class="review-line quiet">Still open. These get time suggested tomorrow.</p>
+          <ul id="review-open" class="review-open"></ul>
+          <p id="review-tomorrow" class="review-line"></p>
+        </section>
+        {% endif %}
+      </div>
+
+      <section class="plan-section">
+        <div class="section-head">
+          <h2 class="section-title">Plan</h2>
+          {% if live %}
+          <div class="plan-controls">
+            <select id="plan-mode" class="select" aria-label="What to plan">
+              <option value="daily">Today</option>
+              <option value="weekly">This week</option>
+              <option value="all">Both</option>
+            </select>
+            <button id="plan-btn" class="btn btn-ink" type="button">Generate plan</button>
+          </div>
+          {% endif %}
+        </div>
+        {% if live %}
+        <select id="plan-history" class="select select-quiet" aria-label="Earlier plans">
+          <option value="">Earlier plans</option>
+        </select>
+        <p id="plan-status" class="msg" aria-live="polite" hidden></p>
+        {% endif %}
+        <div class="plan-html" id="ai-plan-container">{{ ai_plan_html | safe }}</div>
+      </section>
+
+      <section class="notes-section">
+        <h2 class="section-title">Notes</h2>
+        <label class="field-label" for="temp-note">Note</label>
+        <textarea id="temp-note" class="field" rows="3" placeholder="dentist Thursday afternoon, call home this weekend"></textarea>
+        <label class="field-label" for="perm-note">Standing note</label>
+        <textarea id="perm-note" class="field" rows="3" placeholder="I go to the gym most days around 5pm"></textarea>
+        <p class="field-help">Saved in this browser and used whenever you add notes or generate a plan.</p>
+        <div class="row">
+          <button id="ask-ai-btn" class="btn" type="button">Add notes to calendar</button>
+          <button id="save-perm" class="btn btn-quiet" type="button">Save standing note</button>
+          <button id="clear-perm" class="btn btn-quiet" type="button">Clear</button>
+        </div>
+        <p id="ai-loading" class="msg" aria-live="polite" hidden></p>
+      </section>
+
+      {% if live %}
+      <div class="archive">
+        <details id="done-box" class="done-box"{% if not done_tasks %} hidden{% endif %}>
+          <summary>Marked done (<span id="done-count">{{ (done_tasks or []) | length }}</span>)</summary>
+          <ul id="done-list">{% for entry in done_tasks or [] %}<li><span class="done-title">{{ entry.title | e }}</span><button type="button" class="text-link undo-done" data-key="{{ entry.key | e }}">Undo</button></li>{% endfor %}</ul>
+        </details>
+        <details id="estimates-box" class="done-box estimates-box"{% if not estimate_notes %} hidden{% endif %}>
+          <summary>How long things take</summary>
+          <ul id="estimates-list">{% for line in estimate_notes or [] %}<li>{{ line | e }}</li>{% endfor %}</ul>
+        </details>
+      </div>
+      <p id="scan-status" class="msg" aria-live="polite" hidden></p>
+      {% endif %}
     </aside>
 
-    <main class="week-page">
-      <div id="calendar"></div>
-      <footer class="legend">
-        <span class="legend-item"><span class="swatch hl-class" aria-hidden="true"></span>Class</span>
-        <span class="legend-item"><span class="swatch hl-event" aria-hidden="true"></span>Event</span>
-        <span class="legend-item"><span class="swatch hl-task" aria-hidden="true"></span>Task</span>
-        <span class="legend-item"><span class="swatch hl-yours" aria-hidden="true"></span>Added by you</span>
-        <span class="legend-item"><span class="swatch hl-plan" aria-hidden="true"></span>Plan</span>
-        <span class="legend-item"><span class="swatch pencil" aria-hidden="true"></span>Suggested</span>
-        <span class="legend-item"><span class="swatch free" aria-hidden="true"></span>Free time</span>
-        <span class="legend-item"><span class="swatch overlap" aria-hidden="true"></span>Overlap</span>
-      </footer>
+    <main class="board">
+      <div class="sheet">
+        <div id="calendar"></div>
+        <footer class="legend">
+          <span class="legend-item"><span class="swatch c-class" aria-hidden="true"></span>Class</span>
+          <span class="legend-item"><span class="swatch c-event" aria-hidden="true"></span>Event</span>
+          <span class="legend-item"><span class="swatch c-task" aria-hidden="true"></span>Task</span>
+          <span class="legend-item"><span class="swatch c-yours" aria-hidden="true"></span>Added by you</span>
+          <span class="legend-item"><span class="swatch c-plan" aria-hidden="true"></span>Plan</span>
+          <span class="legend-item"><span class="swatch pencil" aria-hidden="true"></span>Suggested</span>
+          <span class="legend-item"><span class="swatch free" aria-hidden="true"></span>Free time</span>
+          <span class="legend-item"><span class="swatch overlap" aria-hidden="true"></span>Overlap</span>
+        </footer>
+      </div>
     </main>
   </div>
 
@@ -638,6 +737,17 @@
     const INITIAL_STATE = {{ (state_json or '{}') | safe }};
     const DEFAULT_MODEL = {{ ollama_model | tojson }};
     const MODE_LABELS = { daily: 'Today', weekly: 'This week', all: 'Both' };
+    // In the web app, "now" follows the server's clock, so the page and the suggestions it computed agree.
+    // A saved dashboard (plan.py) uses the browser's clock, since it may be opened hours later.
+    const SERVER_NOW = {{ (server_now or '') | tojson }};
+    const CLOCK_OFFSET = (function () {
+      const parsed = LIVE && SERVER_NOW ? Date.parse(SERVER_NOW) : NaN;
+      return Number.isFinite(parsed) ? parsed - Date.now() : 0;
+    })();
+
+    function clock() {
+      return new Date(Date.now() + CLOCK_OFFSET);
+    }
 
     // Colors come from CSS classes (category and kind), not from the event data.
     function prepareEvents(list) {
@@ -666,7 +776,7 @@
     }
 
     document.addEventListener('DOMContentLoaded', function () {
-      const now = new Date();
+      const now = clock();
       document.getElementById('today-weekday').textContent = now.toLocaleDateString(undefined, { weekday: 'long' });
       document.getElementById('today-date').textContent = now.toLocaleDateString(undefined, { month: 'long', day: 'numeric' });
 
@@ -735,7 +845,8 @@
       const calendar = new FullCalendar.Calendar(calendarEl, {
         // A week of columns is unreadable on a phone, so small screens start on one day.
         initialView: window.matchMedia('(max-width: 700px)').matches ? 'timeGridDay' : 'timeGridWeek',
-        initialDate: new Date(),
+        initialDate: clock(),
+        now: clock,
         timeZone: 'local',
         headerToolbar: {
           left: 'title',
@@ -763,7 +874,7 @@
         slotMinTime: '06:00:00',
         slotMaxTime: '23:00:00',
         // Rows keep a readable height (see .fc-timegrid-slot) and the grid scrolls, opening an hour before now.
-        scrollTime: `${String(Math.max(7, new Date().getHours() - 1)).padStart(2, '0')}:00:00`,
+        scrollTime: `${String(Math.max(7, clock().getHours() - 1)).padStart(2, '0')}:00:00`,
         expandRows: false,
         eventShortHeight: 34,
         slotEventOverlap: false,
@@ -876,6 +987,117 @@
       });
       calendar.render();
 
+      // --- Now and next: what's happening, what's coming up today, and what's due ---
+      function clockLabel(date) {
+        return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+      }
+
+      function setBigClock(el, date) {
+        const parts = new Intl.DateTimeFormat([], { hour: 'numeric', minute: '2-digit' }).formatToParts(date);
+        const period = parts.filter(p => p.type === 'dayPeriod').map(p => p.value).join('');
+        el.textContent = parts.filter(p => p.type !== 'dayPeriod').map(p => p.value).join('').trim();
+        if (period) {
+          const small = document.createElement('span');
+          small.className = 'period';
+          small.textContent = period;
+          el.appendChild(small);
+        }
+      }
+
+      function plainTitle(event) {
+        const props = event.extendedProps || {};
+        return props.task_title || event.title.replace(/^Task:\s*/, '');
+      }
+
+      function isSuggested(event) {
+        return (event.extendedProps || {}).source === 'suggestion';
+      }
+
+      function untilText(minutes) {
+        return minutes < 1 ? 'starting now' : `in ${formatMinutes(minutes)}`;
+      }
+
+      function renderNow() {
+        const box = document.getElementById('now-box');
+        if (!box) return;
+        const moment = clock();
+        const today = isoDate(moment);
+        const tomorrow = isoDate(new Date(moment.getFullYear(), moment.getMonth(), moment.getDate() + 1));
+        const timed = calendar.getEvents()
+          .filter(function (e) {
+            const props = e.extendedProps || {};
+            return e.display !== 'background' && !e.allDay && e.start && e.end && props.status !== 'skipped';
+          })
+          .sort((a, b) => a.start - b.start);
+        const current = timed.filter(e => !isSuggested(e) && e.start <= moment && moment < e.end).pop();
+        const upcoming = timed.filter(e => e.start > moment && isoDate(e.start) === today);
+
+        const label = document.getElementById('now-label');
+        const time = document.getElementById('now-time');
+        const title = document.getElementById('now-title');
+        const meta = document.getElementById('now-meta');
+        const progress = document.getElementById('now-progress');
+        let featured = null;
+        time.hidden = false;
+        progress.hidden = true;
+
+        if (current) {
+          featured = current;
+          label.textContent = 'Now, until';
+          setBigClock(time, current.end);
+          title.textContent = plainTitle(current);
+          meta.textContent = `${formatMinutes(Math.max(1, Math.round((current.end - moment) / 60000)))} left`;
+          const share = (moment - current.start) / (current.end - current.start);
+          progress.firstElementChild.style.width = `${Math.round(Math.min(1, Math.max(0, share)) * 100)}%`;
+          progress.hidden = false;
+        } else if (upcoming.length) {
+          featured = upcoming[0];
+          label.textContent = isSuggested(featured) ? 'Next, suggested' : 'Next';
+          setBigClock(time, featured.start);
+          title.textContent = plainTitle(featured);
+          meta.textContent = untilText(Math.round((featured.start - moment) / 60000));
+        } else {
+          label.textContent = 'Nothing else today';
+          time.hidden = true;
+          const first = timed.find(e => !isSuggested(e) && isoDate(e.start) === tomorrow);
+          title.textContent = first
+            ? `Tomorrow starts with ${plainTitle(first)} at ${clockLabel(first.start)}.`
+            : 'Your calendar is clear for the rest of the day.';
+          meta.textContent = '';
+        }
+        box.classList.toggle('is-quiet', !featured);
+
+        const list = document.getElementById('now-next');
+        list.innerHTML = '';
+        upcoming.filter(e => e !== featured).slice(0, 3).forEach(function (e) {
+          const row = document.createElement('li');
+          if (isSuggested(e)) row.className = 'is-suggested';
+          const at = document.createElement('span');
+          at.className = 'next-time';
+          at.textContent = clockLabel(e.start);
+          const name = document.createElement('span');
+          name.className = 'next-title';
+          name.textContent = plainTitle(e);
+          const when = document.createElement('span');
+          when.className = 'next-when';
+          when.textContent = isSuggested(e) ? 'suggested' : untilText(Math.round((e.start - moment) / 60000));
+          row.append(at, name, when);
+          list.appendChild(row);
+        });
+        list.hidden = list.children.length === 0;
+
+        const due = calendar.getEvents()
+          .filter(e => e.allDay && (e.extendedProps || {}).source === 'task' && isoDate(e.start) === today)
+          .map(plainTitle);
+        const dueLine = document.getElementById('now-due');
+        const more = due.length > 2 ? `, and ${due.length - 2} more` : '';
+        dueLine.textContent = due.length ? `Due today: ${due.slice(0, 2).join(', ')}${more}.` : '';
+        dueLine.hidden = due.length === 0;
+      }
+
+      renderNow();
+      setInterval(renderNow, 60000);
+
       // --- Keeping the calendar in sync with the server (server.py only) ---
       function renderNotices(notices) {
         const list = document.getElementById('notices');
@@ -903,6 +1125,7 @@
           renderWeek(Array.isArray(data.week) ? data.week : []);
           renderCheckins(Array.isArray(data.checkins) ? data.checkins : []);
           renderReview(data.review || null);
+          renderNow();
         } catch (err) {
           console.error('Calendar refresh failed:', err);
         }
@@ -954,7 +1177,7 @@
       // --- Check-ins: did past work sessions happen? Skipped time is suggested again. ---
       function isPastSession(event) {
         const props = event.extendedProps || {};
-        return /^(study|exam):/.test(props.ref || '') && !event.allDay && Boolean(event.end) && event.end <= new Date();
+        return /^(study|exam):/.test(props.ref || '') && !event.allDay && Boolean(event.end) && event.end <= clock();
       }
 
       function checkInActions(event) {

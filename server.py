@@ -252,6 +252,7 @@ def index():
         notices=_notices(state),
         week_notes=state['suggestions'].get('week', []),
         state_json=script_safe_json(_live_state(state)),
+        server_now=timeutil.now().isoformat(),
         done_tasks=state['done'],
         estimate_notes=state['suggestions'].get('estimates', []),
         ollama_model=_configured_model(settings),

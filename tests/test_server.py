@@ -161,6 +161,8 @@ class IndexTests(ServerTestCase):
         self.assertIn('title="Gmail: not loaded"', html)
         self.assertIn('id="plan-btn"', html)
         self.assertIn('id="model-select"', html)
+        # The page's "now" follows the server clock.
+        self.assertRegex(html, r'const SERVER_NOW = "\d{4}-\d{2}-\d{2}T\d{2}:\d{2}')
         self.assertIn('href="/?refresh=1"', html)
 
     def test_saved_events_are_rendered(self):

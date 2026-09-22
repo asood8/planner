@@ -45,6 +45,7 @@ class RenderDashboardTests(unittest.TestCase):
         self.assertNotIn('id="plan-btn"', html)
         self.assertNotIn("?refresh=1", html)
         self.assertIn("const LIVE = false;", html)
+        self.assertIn('const SERVER_NOW = "";', html)  # a saved dashboard uses the browser's clock
         self.assertNotIn('id="model-select"', html)
 
     def test_notices_are_escaped(self):

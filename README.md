@@ -2,7 +2,7 @@
 
 I built this to plan my own weeks as a student. It pulls in Google Calendar, Google Tasks and unread Gmail, works out when you should actually work on what's due, and has a language model running locally through Ollama write a daily or weekly plan. Nothing is sent to a cloud AI service, and everything it saves stays on your machine.
 
-![The week view: classes, events, and tasks marked in highlighter colors, dashed suggested study and exam-review sessions, a red outline where two events overlap, and a sidebar with this week's warnings, sessions to check in, and the day's plan](docs/screenshots/week.png)
+![The dashboard: an amber box showing what's next today, this week's warnings and sessions to check in, and a week calendar with classes, events and tasks in color, dashed suggested study and exam-review sessions, and a red outline where two events overlap](docs/screenshots/week.png)
 
 <sub>Screenshots use made-up sample data.</sub>
 
@@ -50,6 +50,10 @@ Most of the time you'll want the web app instead:
 On Windows, `run_server.bat` starts it (and Ollama, if needed) and opens the page for you.
 
 ## Using the dashboard
+
+### Now and next
+
+The amber box at the top shows what you should be doing right now, or what's coming up next and how long until it starts. Under it are the next few things on today's calendar and anything that's due today. When there's nothing left for the day, it turns white and tells you how tomorrow starts.
 
 ### Plans
 
@@ -107,9 +111,9 @@ Click a task on the calendar to mark it done. This only hides it in the planner 
 
 Each color is a kind of thing: classes, events, tasks, things you added, and the AI plan. Dashed boxes are suggestions. Click one to accept or dismiss it, or drag it to a better time. Overlapping events get a red outline.
 
-The dots at the bottom of the sidebar show whether each data source loaded and whether Ollama is running, and you can switch models there too. Google data is cached for five minutes; click **Refresh** to fetch it again.
+The dots in the top bar show whether each data source loaded and whether Ollama is running, and you can switch models there too. Google data is cached for five minutes; click **Refresh** to fetch it again.
 
-<p align="center"><img src="docs/screenshots/phone.png" width="320" alt="The sidebar on a phone-sized screen in the evening: this week's warnings, sessions to check in, the end-of-day review with a task still open, and the day's plan"></p>
+<p align="center"><img src="docs/screenshots/phone.png" width="320" alt="The dashboard on a phone-sized screen in the evening: how tomorrow starts, a warning, this week's heads-up, sessions to check in, the end-of-day review with a task still open, and the top of the calendar"></p>
 
 ## Canvas and other calendar feeds
 
